@@ -1,0 +1,39 @@
+# ==============================================================================
+# eCoral - .gitignore para Hospedagem Compartilhada cPanel
+# ==============================================================================
+
+# --- Uploads e Backups ---
+# Ignora arquivos de uploads (comprovantes, imagens), mas mantém a estrutura e o .htaccess de segurança
+/uploads/*
+!/uploads/.htaccess
+
+# Ignora backups de banco/arquivos gerados pelo sistema, mantendo a estrutura e o .htaccess de segurança
+/backups/*
+!/backups/.htaccess
+
+# --- Configurações Locais / Arquivos Sensíveis ---
+# Caso decida separar as credenciais do banco de dados (altamente recomendado)
+config.local.php
+.env
+.env.local
+.env.*.local
+
+# --- Gerenciadores de Dependência (Composer) ---
+# Recomenda-se ignorar a pasta vendor se você puder executar `composer install` no cPanel (via Terminal ou .cpanel.yml).
+# Caso sua hospedagem seja muito limitada e não permita rodar composer, comente a linha abaixo (#/vendor/) para enviar o vendor ao git.
+/vendor/
+
+# --- Logs e Arquivos do cPanel / Apache ---
+# O PHP no cPanel frequentemente cria arquivos 'error_log' nos diretórios onde ocorrem erros
+error_log
+**/error_log
+.well-known/acme-challenge/
+
+# --- Arquivos Temporários de Sistema e IDEs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.tmp
+*.log

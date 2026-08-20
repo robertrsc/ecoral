@@ -1,0 +1,9 @@
+<?php
+// config.local.php.example
+// Copie este arquivo para 'config.local.php' e defina as credenciais locais ou de produção.
+// O arquivo 'config.local.php' será ignorado pelo Git (segurança de credenciais).
+
+define('DB_HOST', 'localhost');
+define('DB_USER', 'seu_usuario_banco');
+define('DB_PASS', 'sua_senha_banco');
+define('DB_NAME', 'seu_nome_banco');

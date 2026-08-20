@@ -1,0 +1,6 @@
+Deny from all
+<FilesMatch "\.(jpeg|jpg|png|pdf)$">
+Order Allow,Deny
+Allow from all
+</FilesMatch>
+Options -ExecCGI
