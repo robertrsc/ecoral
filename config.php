@@ -6,10 +6,10 @@
 if (file_exists(__DIR__ . '/config.local.php')) {
     require_once __DIR__ . '/config.local.php';
 } else {
-    // Fallback padrão local
+    // Fallback padrão genérico (nunca coloque senhas reais aqui)
     define('DB_HOST', 'localhost');
-    define('DB_USER', 'servidor');
-    define('DB_PASS', 'Nv32125');
+    define('DB_USER', 'usuario_desenvolvimento');
+    define('DB_PASS', 'senha_desenvolvimento');
     define('DB_NAME', 'ecoral');
 }
 
