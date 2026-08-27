@@ -165,6 +165,25 @@ function sync_database(PDO $pdo) {
         $results['users_alter_member_code'] = ['success' => false, 'message' => "Erro ao adicionar 'member_code': " . $e->getMessage()];
     }
 
+    // Sincronizar colunas de branding na tabela choirs (code e logo)
+    try {
+        $choirCols = [
+            'code' => "VARCHAR(50) UNIQUE NULL",
+            'logo' => "VARCHAR(255) NULL"
+        ];
+        foreach ($choirCols as $colName => $colDef) {
+            $stmtCheck = $pdo->query("SHOW COLUMNS FROM `choirs` LIKE '$colName'");
+            if ($stmtCheck->rowCount() === 0) {
+                // Se for UNIQUE, não usamos ADD COLUMN UNIQUE diretamente para evitar colisões com nulos se houver registros antigos, 
+                // mas no MySQL VARCHAR(50) UNIQUE NULL funciona perfeitamente com múltiplos nulos.
+                $pdo->exec("ALTER TABLE `choirs` ADD COLUMN `$colName` $colDef;");
+                $results['choirs_alter_' . $colName] = ['success' => true, 'message' => "Coluna '$colName' adicionada à tabela 'choirs'."];
+            }
+        }
+    } catch (PDOException $e) {
+        $results['choirs_alter_columns'] = ['success' => false, 'message' => "Erro ao adicionar colunas de branding em choirs: " . $e->getMessage()];
+    }
+
     // Sincronizar colunas de recorrencia na tabela billing_items
     try {
         $cols = [
