@@ -31,7 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $status = trim($_POST['status'] ?? 'active');
-    $balance = floatval($_POST['balance'] ?? 0.00);
+    // Suporta: hidden da máscara (1234.56), campo display (1.234,56) ou numérico puro
+    $raw_balance = $_POST['balance'] ?? $_POST['balance_display'] ?? '0';
+    $raw_balance = str_replace('.', '', $raw_balance);
+    $raw_balance = str_replace(',', '.', $raw_balance);
+    $balance = floatval($raw_balance);
     
     if (is_superadmin()) {
         $choir_id = intval($_POST['choir_id'] ?? 0);
@@ -53,9 +57,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (empty($password)) {
                         $error = 'A senha é obrigatória para novos membros.';
                     } else {
+                        $member_code = get_or_generate_member_code($pdo, $voice_type, $choir_id);
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, phone, voice_type, username, password, role, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?, 'membro', ?, ?)");
-                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $username, $hashedPassword, $status, $balance]);
+                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, phone, voice_type, member_code, username, password, role, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'membro', ?, ?)");
+                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $status, $balance]);
+                        $new_member_id = $pdo->lastInsertId();
+                        if ($status === 'active') {
+                            sync_recurring_billings($pdo, $choir_id, $new_member_id);
+                        }
                         set_flash_message('success', "Membro '$name' cadastrado com sucesso.");
                         header("Location: members.php");
                         exit;
@@ -72,13 +81,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     
+                    // Buscar dados antigos para ver se voice_type ou choir_id mudou, ou se não tem código
+                    $stmtOld = $pdo->prepare("SELECT choir_id, voice_type, member_code FROM users WHERE id = ?");
+                    $stmtOld->execute([$edit_id]);
+                    $old_member = $stmtOld->fetch();
+                    
+                    $member_code = $old_member['member_code'];
+                    if (!$member_code || $old_member['choir_id'] != $choir_id || $old_member['voice_type'] != $voice_type) {
+                        $member_code = get_or_generate_member_code($pdo, $voice_type, $choir_id, $edit_id);
+                    }
+                    
                     if (!empty($password)) {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, username = ?, password = ?, status = ?, balance = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $username, $hashedPassword, $status, $balance, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, password = ?, status = ?, balance = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $status, $balance, $edit_id]);
                     } else {
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, username = ?, status = ?, balance = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $username, $status, $balance, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, status = ?, balance = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $status, $balance, $edit_id]);
+                    }
+                    if ($status === 'active') {
+                        sync_recurring_billings($pdo, $choir_id, $edit_id);
                     }
                     set_flash_message('success', "Membro '$name' atualizado com sucesso.");
                     header("Location: members.php");
@@ -104,8 +126,17 @@ if ($action === 'approve' && $edit_id > 0) {
             }
         }
         
+        // Buscar choir_id do membro para rodar a sincronização
+        $stmtChoir = $pdo->prepare("SELECT choir_id FROM users WHERE id = ?");
+        $stmtChoir->execute([$edit_id]);
+        $member_choir_id = $stmtChoir->fetchColumn();
+
         $stmt = $pdo->prepare("UPDATE users SET status = 'active' WHERE id = ? AND role = 'membro'");
         $stmt->execute([$edit_id]);
+
+        if ($member_choir_id) {
+            sync_recurring_billings($pdo, $member_choir_id, $edit_id);
+        }
         set_flash_message('success', 'Membro aprovado com sucesso!');
     } catch (PDOException $e) {
         set_flash_message('error', 'Erro ao aprovar membro: ' . $e->getMessage());
@@ -154,23 +185,52 @@ if ($action === 'edit' && $edit_id > 0) {
     }
 }
 
-// Listar membros (cantores)
+// Listar membros (cantores) com busca e paginação
 $members = [];
+$total_records = 0;
+$limit = 15;
+$page = max(1, intval($_GET['page'] ?? 1));
+$offset = ($page - 1) * $limit;
+$search = trim($_GET['search'] ?? '');
+
 if ($action === 'list') {
     try {
-        if (is_superadmin()) {
-            $stmt = $pdo->query("SELECT u.*, c.name as choir_name FROM users u 
-                                 LEFT JOIN choirs c ON u.choir_id = c.id 
-                                 WHERE u.role = 'membro' 
-                                 ORDER BY u.status DESC, u.id DESC");
-        } else {
-            $stmt = $pdo->prepare("SELECT u.*, c.name as choir_name FROM users u 
-                                   LEFT JOIN choirs c ON u.choir_id = c.id 
-                                   WHERE u.choir_id = ? AND u.role = 'membro' 
-                                   ORDER BY u.status DESC, u.id DESC");
-            $stmt->execute([$loggedUser['choir_id']]);
+        $params = [];
+        $where_clauses = ["u.role = 'membro'"];
+        
+        if (!is_superadmin()) {
+            $where_clauses[] = "u.choir_id = :logged_choir_id";
+            $params[':logged_choir_id'] = $loggedUser['choir_id'];
         }
-        $members = $stmt->fetchAll();
+        
+        if (!empty($search)) {
+            $where_clauses[] = "(u.name LIKE :search 
+                                OR u.email LIKE :search 
+                                OR u.voice_type LIKE :search 
+                                OR u.member_code LIKE :search 
+                                OR c.name LIKE :search)";
+            $params[':search'] = '%' . $search . '%';
+        }
+        
+        $where_sql = implode(' AND ', $where_clauses);
+        
+        // Obter contagem total
+        $count_sql = "SELECT COUNT(*) FROM users u 
+                      LEFT JOIN choirs c ON u.choir_id = c.id 
+                      WHERE $where_sql";
+        $stmtCount = $pdo->prepare($count_sql);
+        $stmtCount->execute($params);
+        $total_records = intval($stmtCount->fetchColumn());
+        
+        // Obter registros paginados
+        $select_sql = "SELECT u.*, c.name as choir_name FROM users u 
+                       LEFT JOIN choirs c ON u.choir_id = c.id 
+                       WHERE $where_sql 
+                       ORDER BY u.status DESC, u.id DESC 
+                       LIMIT $limit OFFSET $offset";
+        $stmtSelect = $pdo->prepare($select_sql);
+        $stmtSelect->execute($params);
+        $members = $stmtSelect->fetchAll();
     } catch (PDOException $e) {
         $error = 'Erro ao buscar membros: ' . $e->getMessage();
     }
@@ -280,9 +340,11 @@ require_once __DIR__ . '/layout_header.php';
                 </div>
                 <div>
                     <label for="balance" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Saldo em Conta (R$)</label>
-                    <input type="number" name="balance" id="balance" step="0.01" min="0" value="<?= htmlspecialchars($member_data['balance'] ?? '0.00') ?>"
+                    <input type="text" inputmode="numeric" name="balance" id="balance"
+                           data-currency-mask data-allow-zero="true"
+                           data-initial-value="<?= htmlspecialchars($member_data['balance'] ?? '0.00') ?>"
                            class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
-                           placeholder="0.00">
+                           placeholder="0,00">
                 </div>
             </div>
 
@@ -320,6 +382,31 @@ require_once __DIR__ . '/layout_header.php';
      LISTA DE CANTORAS E CANTORES (MEMBROS)
      ============================================== -->
 <?php else: ?>
+    <!-- Painel de Filtros e Busca -->
+    <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700/50 mb-6">
+        <form action="members.php" method="GET" class="flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div class="w-full sm:max-w-md relative">
+                <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" 
+                       placeholder="Pesquise por nome, email, naipe, id..." 
+                       class="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                <span class="absolute left-3.5 top-3.5 text-slate-400 dark:text-slate-500 text-sm">🔍</span>
+            </div>
+            
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <?php if (!empty($search)): ?>
+                    <a href="members.php" 
+                       class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-white font-semibold text-xs rounded-lg transition-colors">
+                        Limpar
+                    </a>
+                <?php endif; ?>
+                <button type="submit" 
+                        class="px-4 py-2 bg-coral-500 hover:bg-coral-600 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm">
+                    Buscar
+                </button>
+            </div>
+        </form>
+    </div>
+
     <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 overflow-hidden">
         <?php if (empty($members)): ?>
             <div class="text-center py-12 text-slate-400">
@@ -341,7 +428,27 @@ require_once __DIR__ . '/layout_header.php';
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-700/30">
                         <?php foreach ($members as $m): ?>
                             <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-white"><?= htmlspecialchars($m['name']) ?></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-white">
+                                    <div><?= htmlspecialchars($m['name']) ?></div>
+                                    <div class="text-[10px] text-slate-400 font-mono mt-1 flex items-center gap-1 select-none">
+                                        <span>Código:</span>
+                                        <?php if (!empty($m['member_code'])): ?>
+                                            <span class="inline-flex items-center gap-1 cursor-pointer bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/60 dark:hover:bg-slate-900 text-[10px] text-slate-600 dark:text-slate-300 font-mono px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 transition-all active:scale-95" 
+                                                  onclick="copyToClipboard('<?= htmlspecialchars($m['member_code']) ?>', this)"
+                                                  title="Clique para copiar o código">
+                                                <span class="code-text"><?= htmlspecialchars($m['member_code']) ?></span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-slate-400 copy-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                </svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-emerald-500 check-icon hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="text-slate-400 dark:text-slate-500">Não gerado</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                                     <div><?= htmlspecialchars($m['email']) ?></div>
                                     <div class="text-xs text-slate-400">
@@ -376,9 +483,125 @@ require_once __DIR__ . '/layout_header.php';
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Paginação -->
+            <?php
+            $total_pages = ceil($total_records / $limit);
+            if ($total_pages > 1):
+            ?>
+                <div class="px-6 py-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-700/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+                    <div class="text-slate-500 dark:text-slate-400 text-center sm:text-left">
+                        Mostrando <span class="font-bold text-slate-700 dark:text-slate-300"><?= min($total_records, $offset + 1) ?></span> a 
+                        <span class="font-bold text-slate-700 dark:text-slate-300"><?= min($total_records, $offset + count($members)) ?></span> de 
+                        <span class="font-bold text-slate-700 dark:text-slate-300"><?= $total_records ?></span> cantores
+                    </div>
+                    
+                    <div class="flex items-center gap-1.5 flex-wrap justify-center">
+                        <!-- Botão Anterior -->
+                        <?php if ($page > 1): ?>
+                            <a href="members.php?page=<?= $page - 1 ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                               class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-all text-slate-600 dark:text-slate-300">
+                                Anterior
+                            </a>
+                        <?php else: ?>
+                            <span class="px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 text-slate-300 dark:text-slate-600 font-bold select-none cursor-not-allowed">
+                                Anterior
+                            </span>
+                        <?php endif; ?>
+                        
+                        <!-- Páginas Numéricas -->
+                        <?php
+                        $range = 2;
+                        for ($i = 1; $i <= $total_pages; $i++):
+                            if ($i == 1 || $i == $total_pages || ($i >= $page - $range && $i <= $page + $range)):
+                                if ($i == $page):
+                        ?>
+                                    <span class="px-3 py-1.5 rounded-lg bg-coral-500 text-white font-bold transition-all">
+                                        <?= $i ?>
+                                    </span>
+                        <?php   else: ?>
+                                    <a href="members.php?page=<?= $i ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                                       class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold transition-all">
+                                        <?= $i ?>
+                                    </a>
+                        <?php
+                                endif;
+                            elseif (($i == 2 && $page - $range > 2) || ($i == $total_pages - 1 && $page + $range < $total_pages - 1)):
+                        ?>
+                                <span class="px-2 text-slate-400 select-none">...</span>
+                        <?php
+                            endif;
+                        endfor;
+                        ?>
+                        
+                        <!-- Botão Próximo -->
+                        <?php if ($page < $total_pages): ?>
+                            <a href="members.php?page=<?= $page + 1 ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                               class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-all text-slate-600 dark:text-slate-300">
+                                Próxima
+                            </a>
+                        <?php else: ?>
+                            <span class="px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 text-slate-300 dark:text-slate-600 font-bold select-none cursor-not-allowed">
+                                Próxima
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 <?php endif; ?>
+
+<script>
+function copyToClipboard(text, element) {
+    if (!navigator.clipboard) {
+        // Fallback para navegadores antigos
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";  // evitar rolagem
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showCopiedState(element);
+        } catch (err) {
+            console.error('Erro ao copiar código: ', err);
+        }
+        document.body.removeChild(textArea);
+        return;
+    }
+    
+    navigator.clipboard.writeText(text).then(function() {
+        showCopiedState(element);
+    }, function(err) {
+        console.error('Erro ao copiar código: ', err);
+    });
+}
+
+function showCopiedState(element) {
+    const copyIcon = element.querySelector('.copy-icon');
+    const checkIcon = element.querySelector('.check-icon');
+    const codeText = element.querySelector('.code-text');
+    
+    if (copyIcon && checkIcon && codeText) {
+        const originalText = codeText.textContent;
+        codeText.textContent = 'Copiado!';
+        element.classList.add('bg-emerald-50', 'dark:bg-emerald-950/20', 'border-emerald-200', 'dark:border-emerald-900/30');
+        element.classList.remove('bg-slate-50', 'hover:bg-slate-100', 'dark:bg-slate-900/60', 'dark:hover:bg-slate-900', 'border-slate-200', 'dark:border-slate-700/50');
+        copyIcon.classList.add('hidden');
+        checkIcon.classList.remove('hidden');
+        
+        setTimeout(function() {
+            codeText.textContent = originalText;
+            element.classList.remove('bg-emerald-50', 'dark:bg-emerald-950/20', 'border-emerald-200', 'dark:border-emerald-900/30');
+            element.classList.add('bg-slate-50', 'hover:bg-slate-100', 'dark:bg-slate-900/60', 'dark:hover:bg-slate-900', 'border-slate-200', 'dark:border-slate-700/50');
+            copyIcon.classList.remove('hidden');
+            checkIcon.classList.add('hidden');
+        }, 1500);
+    }
+}
+</script>
 
 <?php
 require_once __DIR__ . '/layout_footer.php';

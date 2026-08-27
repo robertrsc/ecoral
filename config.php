@@ -216,3 +216,315 @@ function send_email($toEmail, $toName, $subject, $body) {
     
     return true; // Retorna true para simular sucesso
 }
+
+// Gera ou atualiza um código identificador único para membros do coral
+// Naipe (primeira letra) + ID do Coral + 4 dígitos aleatórios
+function get_or_generate_member_code(PDO $pdo, $voice_type, $choir_id, $exclude_user_id = 0) {
+    $first_letter = (isset($voice_type) && strlen(trim($voice_type)) > 0) ? strtoupper(substr(trim($voice_type), 0, 1)) : 'M';
+    $choir_id = intval($choir_id);
+    
+    $attempts = 0;
+    while ($attempts < 100) {
+        $random_numbers = sprintf("%04d", rand(0, 9999));
+        $code = $first_letter . $choir_id . $random_numbers;
+        
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE member_code = ? AND id != ?");
+        $stmt->execute([$code, $exclude_user_id]);
+        if ($stmt->fetchColumn() == 0) {
+            return $code;
+        }
+        $attempts++;
+    }
+    // Fallback caso ocorra colisão improvável de tentativas
+    return $first_letter . $choir_id . strval(rand(1000, 9999));
+}
+
+/**
+ * Sincroniza e gera as cobranças recorrentes para os períodos que já foram alcançados.
+ */
+function sync_recurring_billings(PDO $pdo, $choir_id = null, $member_id = null) {
+    // Sincroniza também as cobranças eventuais em aberto
+    sync_eventual_billings($pdo, $choir_id, $member_id);
+
+    try {
+        // Busca todos os modelos de cobrança recorrente ativos
+        $sql = "SELECT * FROM billing_items WHERE type = 'recurring' AND start_date <= CURRENT_DATE";
+        $params = [];
+        if ($choir_id !== null) {
+            $sql .= " AND choir_id = ?";
+            $params[] = $choir_id;
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $templates = $stmt->fetchAll();
+        
+        if (empty($templates)) {
+            return;
+        }
+        
+        $today = date('Y-m-d');
+        
+        foreach ($templates as $t) {
+            if (empty($t['start_date']) || empty($t['end_date'])) {
+                continue;
+            }
+            
+            $start = new DateTime($t['start_date']);
+            $end = new DateTime($t['end_date']);
+            
+            $interval = new DateInterval('P1M');
+            $end_mod = (clone $end)->modify('+1 day');
+            $period = new DatePeriod($start, $interval, $end_mod);
+            
+            // Determina membros alvo
+            $target_ids = [];
+            if ($t['target_type'] === 'all') {
+                $sqlMembers = "SELECT id FROM users WHERE choir_id = ? AND role = 'membro' AND status = 'active'";
+                $paramsMembers = [$t['choir_id']];
+                if ($member_id !== null) {
+                    $sqlMembers .= " AND id = ?";
+                    $paramsMembers[] = $member_id;
+                }
+                $stmtM = $pdo->prepare($sqlMembers);
+                $stmtM->execute($paramsMembers);
+                $target_ids = $stmtM->fetchAll(PDO::FETCH_COLUMN);
+            } else {
+                $selected = json_decode($t['target_members'] ?? '[]', true);
+                if (is_array($selected)) {
+                    $selected = array_map('intval', $selected);
+                    if ($member_id !== null) {
+                        if (in_array(intval($member_id), $selected)) {
+                            $stmtM = $pdo->prepare("SELECT id FROM users WHERE id = ? AND status = 'active'");
+                            $stmtM->execute([$member_id]);
+                            $m_id = $stmtM->fetchColumn();
+                            if ($m_id) {
+                                $target_ids[] = intval($m_id);
+                            }
+                        }
+                    } else {
+                        if (!empty($selected)) {
+                            $in_clause = implode(',', array_fill(0, count($selected), '?'));
+                            $stmtM = $pdo->prepare("SELECT id FROM users WHERE id IN ($in_clause) AND status = 'active'");
+                            $stmtM->execute($selected);
+                            $target_ids = $stmtM->fetchAll(PDO::FETCH_COLUMN);
+                        }
+                    }
+                }
+            }
+            
+            if (empty($target_ids)) {
+                continue;
+            }
+            
+            // Carrega em cache as cobranças já geradas para este template
+            $stmtExisting = $pdo->prepare("SELECT member_id, due_date FROM member_billing WHERE billing_item_id = ?");
+            $stmtExisting->execute([$t['id']]);
+            $existing = [];
+            while ($row = $stmtExisting->fetch()) {
+                $existing[$row['member_id']][$row['due_date']] = true;
+            }
+            
+            // Verifica os períodos alcançados
+            foreach ($period as $dt) {
+                $period_due_date = $dt->format('Y-m-d');
+                if ($period_due_date > $today) {
+                    break;
+                }
+                if ($period_due_date > $t['end_date']) {
+                    break;
+                }
+                
+                // Insere se não existir
+                foreach ($target_ids as $m_id) {
+                    if (!isset($existing[$m_id][$period_due_date])) {
+                        $stmtInsert = $pdo->prepare("INSERT INTO member_billing (member_id, billing_item_id, status, due_date) VALUES (?, ?, 'open', ?)");
+                        $stmtInsert->execute([$m_id, $t['id'], $period_due_date]);
+                        $existing[$m_id][$period_due_date] = true;
+                    }
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        // Ignora erros de colunas inexistentes caso o banco ainda não esteja sincronizado
+    }
+}
+
+/**
+ * Sincroniza e gera cobranças eventuais para membros que ainda não as receberam.
+ */
+function sync_eventual_billings(PDO $pdo, $choir_id = null, $member_id = null) {
+    try {
+        // Busca todos os itens de cobrança eventual com vencimento futuro ou hoje
+        $sql = "SELECT * FROM billing_items WHERE type = 'eventual' AND due_date >= CURRENT_DATE";
+        $params = [];
+        if ($choir_id !== null) {
+            $sql .= " AND choir_id = ?";
+            $params[] = $choir_id;
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $eventuals = $stmt->fetchAll();
+        
+        if (empty($eventuals)) {
+            return;
+        }
+        
+        foreach ($eventuals as $ev) {
+            // Determina membros alvo
+            $target_ids = [];
+            if ($ev['target_type'] === 'all') {
+                $sqlMembers = "SELECT id FROM users WHERE choir_id = ? AND role = 'membro' AND status = 'active'";
+                $paramsMembers = [$ev['choir_id']];
+                if ($member_id !== null) {
+                    $sqlMembers .= " AND id = ?";
+                    $paramsMembers[] = $member_id;
+                }
+                $stmtM = $pdo->prepare($sqlMembers);
+                $stmtM->execute($paramsMembers);
+                $target_ids = $stmtM->fetchAll(PDO::FETCH_COLUMN);
+            } else {
+                $selected = json_decode($ev['target_members'] ?? '[]', true);
+                if (is_array($selected)) {
+                    $selected = array_map('intval', $selected);
+                    if ($member_id !== null) {
+                        if (in_array(intval($member_id), $selected)) {
+                            $stmtM = $pdo->prepare("SELECT id FROM users WHERE id = ? AND status = 'active'");
+                            $stmtM->execute([$member_id]);
+                            $m_id = $stmtM->fetchColumn();
+                            if ($m_id) {
+                                $target_ids[] = intval($m_id);
+                            }
+                        }
+                    } else {
+                        if (!empty($selected)) {
+                            $in_clause = implode(',', array_fill(0, count($selected), '?'));
+                            $stmtM = $pdo->prepare("SELECT id FROM users WHERE id IN ($in_clause) AND status = 'active'");
+                            $stmtM->execute($selected);
+                            $target_ids = $stmtM->fetchAll(PDO::FETCH_COLUMN);
+                        }
+                    }
+                }
+            }
+            
+            if (empty($target_ids)) {
+                continue;
+            }
+            
+            // Carrega em cache as cobranças já geradas para este item eventual
+            $stmtExisting = $pdo->prepare("SELECT member_id FROM member_billing WHERE billing_item_id = ?");
+            $stmtExisting->execute([$ev['id']]);
+            $existing = $stmtExisting->fetchAll(PDO::FETCH_COLUMN);
+            $existing = array_map('intval', $existing);
+            
+            // Insere se não existir
+            foreach ($target_ids as $m_id) {
+                if (!in_array($m_id, $existing)) {
+                    $stmtInsert = $pdo->prepare("INSERT INTO member_billing (member_id, billing_item_id, status, due_date) VALUES (?, ?, 'open', ?)");
+                    $stmtInsert->execute([$m_id, $ev['id'], $ev['due_date']]);
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        // Ignora erros de colunas inexistentes caso o banco ainda não esteja sincronizado
+    }
+}
+
+/**
+ * Reseta o cadastro de um coral (exclui todos os cantores, equipe, comprovantes, faturamento e arquivos).
+ * Mantém somente o usuário administrador fornecido (ou todos se null).
+ */
+function reset_choir_registry(PDO $pdo, $choir_id, $admin_id_to_keep = null) {
+    $choir_id = intval($choir_id);
+    if ($choir_id <= 0) {
+        return false;
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // 1. Buscar todos os usuários do coral para identificar quem será excluído
+        $stmtUsers = $pdo->prepare("SELECT id, role FROM users WHERE choir_id = ?");
+        $stmtUsers->execute([$choir_id]);
+        $users = $stmtUsers->fetchAll();
+        
+        $user_ids_to_delete = [];
+        $admin_ids_to_keep = [];
+        
+        if ($admin_id_to_keep !== null) {
+            $admin_ids_to_keep[] = intval($admin_id_to_keep);
+        } else {
+            // Se nenhum admin específico for informado para manter, mantemos todos os administradores do coral
+            foreach ($users as $u) {
+                if ($u['role'] === 'administrador') {
+                    $admin_ids_to_keep[] = intval($u['id']);
+                }
+            }
+        }
+        
+        foreach ($users as $u) {
+            $uid = intval($u['id']);
+            if (!in_array($uid, $admin_ids_to_keep)) {
+                $user_ids_to_delete[] = $uid;
+            }
+        }
+        
+        // 2. Excluir os arquivos físicos de comprovantes do disco
+        if (!empty($user_ids_to_delete)) {
+            $in_clause = implode(',', array_fill(0, count($user_ids_to_delete), '?'));
+            $stmtReceipts = $pdo->prepare("SELECT filename FROM receipts WHERE member_id IN ($in_clause)");
+            $stmtReceipts->execute($user_ids_to_delete);
+            $receiptFiles = $stmtReceipts->fetchAll(PDO::FETCH_COLUMN);
+            
+            $uploadDir = __DIR__ . '/uploads';
+            foreach ($receiptFiles as $filename) {
+                if (!empty($filename)) {
+                    $filePath = $uploadDir . '/' . $filename;
+                    if (file_exists($filePath)) {
+                        @unlink($filePath);
+                    }
+                }
+            }
+        }
+        
+        // 3. Excluir itens de cobrança (faturamento) do coral
+        // Isso irá propagar o DELETE em cascata para member_billing e receipt_billing_items via banco
+        $stmtDeleteBI = $pdo->prepare("DELETE FROM billing_items WHERE choir_id = ?");
+        $stmtDeleteBI->execute([$choir_id]);
+        
+        if (!empty($user_ids_to_delete)) {
+            $in_clause = implode(',', array_fill(0, count($user_ids_to_delete), '?'));
+            
+            // 4. Excluir comprovantes associados
+            $stmtDeleteRecs = $pdo->prepare("DELETE FROM receipts WHERE member_id IN ($in_clause)");
+            $stmtDeleteRecs->execute($user_ids_to_delete);
+            
+            // 5. Excluir os usuários
+            $stmtDeleteUsers = $pdo->prepare("DELETE FROM users WHERE id IN ($in_clause)");
+            $stmtDeleteUsers->execute($user_ids_to_delete);
+        }
+        
+        // 6. Resetar o saldo para os administradores remanescentes
+        $stmtResetBal = $pdo->prepare("UPDATE users SET balance = 0.00 WHERE choir_id = ? AND role = 'administrador'");
+        $stmtResetBal->execute([$choir_id]);
+        
+        $pdo->commit();
+        return true;
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+
+// Sincronizar cobranças recorrentes se houver usuário logado
+if (is_logged_in()) {
+    $loggedUser = get_logged_user();
+    if ($loggedUser) {
+        if ($loggedUser['role'] === 'superadmin') {
+            sync_recurring_billings($pdo, $_SESSION['admin_choir_id'] ?? null);
+        } else {
+            sync_recurring_billings($pdo, $loggedUser['choir_id']);
+        }
+    }
+}
+

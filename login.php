@@ -6,7 +6,7 @@ require_once __DIR__ . '/config.php';
 if (isset($_GET['logout'])) {
     session_unset();
     session_destroy();
-    session_start(); // inicia nova sessão para a flash message
+    @session_start(); // inicia nova sessão para a flash message
     set_flash_message('success', 'Você saiu da sua conta com sucesso.');
     header("Location: login.php");
     exit;
@@ -20,6 +20,30 @@ if (is_logged_in()) {
 
 $error = null;
 $username_val = '';
+
+$choir_code = trim($_SERVER['QUERY_STRING'] ?? '');
+if (strpos($choir_code, '=') !== false) {
+    $choir_code = $_GET['code'] ?? '';
+}
+$choir_code = preg_replace('/[^A-Z0-9_-]/i', '', strtoupper($choir_code));
+
+$loginChoirLogo = null;
+$loginChoirName = null;
+if (!empty($choir_code)) {
+    try {
+        $stmtChoir = $pdo->prepare("SELECT name, logo FROM choirs WHERE code = ? LIMIT 1");
+        $stmtChoir->execute([$choir_code]);
+        $choirObj = $stmtChoir->fetch();
+        if ($choirObj) {
+            $loginChoirName = $choirObj['name'];
+            if (!empty($choirObj['logo'])) {
+                $loginChoirLogo = $choirObj['logo'];
+            }
+        }
+    } catch (Exception $e) {
+        // Ignorar
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $login_input = trim($_POST['login_input'] ?? '');
@@ -108,12 +132,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <!-- Toggle Tema no topo do Card -->
         <div class="flex justify-between items-center mb-6">
-            <span class="text-2xl font-black font-outfit text-coral-500 tracking-tight flex items-center gap-1.5">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
-                </svg>
-                eCoral
-            </span>
+            <?php if ($loginChoirLogo): ?>
+                <div class="flex flex-col items-start leading-none select-none">
+                    <img src="uploads/<?= htmlspecialchars($loginChoirLogo) ?>" class="h-10 object-contain rounded bg-white p-0.5 border border-slate-200/50" alt="Logo Coral">
+                    <span class="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5 tracking-wider font-outfit uppercase">eCoral</span>
+                    <?php if ($loginChoirName): ?>
+                        <span class="text-[10px] text-slate-500 font-semibold mt-1 block truncate max-w-[200px]" title="<?= htmlspecialchars($loginChoirName) ?>">
+                            <?= htmlspecialchars($loginChoirName) ?>
+                        </span>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
+                <span class="text-2xl font-black font-outfit text-coral-500 tracking-tight flex items-center gap-1.5">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                    </svg>
+                    eCoral
+                </span>
+            <?php endif; ?>
             <button onclick="toggleTheme()" type="button" class="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200">
                 <svg class="h-5 w-5 hidden dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v2.25m0 13.5V21M4.22 4.22l1.77 1.77m11.96 11.96l1.77 1.77M3 12h2.25m13.5 0H21M5.97 18.03l1.77-1.77m11.96-11.96l1.77-1.77M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" />
@@ -126,21 +162,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <h2 class="text-xl font-bold text-slate-800 dark:text-white mb-2 font-outfit">Seja bem-vindo</h2>
         <p class="text-xs text-slate-500 dark:text-slate-400 mb-6">Acesse seu painel para gerenciar suas atividades do coral.</p>
-
+ 
         <!-- Flash messages -->
         <?php $flash = get_flash_message(); if ($flash): ?>
             <div class="mb-4 p-3 rounded-lg text-sm <?= $flash['type'] === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' ?>">
                 <?= htmlspecialchars($flash['message']) ?>
             </div>
         <?php endif; ?>
-
+ 
         <?php if ($error): ?>
             <div class="mb-4 p-3 rounded-lg text-sm bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
                 <?= htmlspecialchars($error) ?>
             </div>
         <?php endif; ?>
-
-        <form action="login.php" method="POST" class="space-y-4">
+ 
+        <form action="login.php<?= !empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING']) : '' ?>" method="POST" class="space-y-4">
             <div>
                 <label for="login_input" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Usuário ou E-mail</label>
                 <input type="text" name="login_input" id="login_input" value="<?= $username_val ?>" required
@@ -166,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <div class="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
             É cantor de algum coral? 
-            <a href="register.php" class="text-coral-500 hover:text-coral-600 font-semibold underline">Cadastre-se</a>
+            <a href="register.php<?= !empty($choir_code) ? '?code=' . htmlspecialchars($choir_code) : '' ?>" class="text-coral-500 hover:text-coral-600 font-semibold underline">Cadastre-se</a>
         </div>
     </div>
     

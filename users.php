@@ -96,6 +96,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Reiniciar Cadastro do Coral (Zona de Perigo)
+if ($action === 'reset_choir') {
+    $choir_to_reset = $loggedUser['choir_id'];
+    if ($choir_to_reset > 0) {
+        try {
+            reset_choir_registry($pdo, $choir_to_reset, $loggedUser['id']);
+            set_flash_message('success', "Cadastro do coral reiniciado com sucesso! Todos os outros usuários, membros cantores e registros financeiros foram apagados.");
+        } catch (Exception $e) {
+            set_flash_message('error', "Erro ao reiniciar cadastro do coral: " . $e->getMessage());
+        }
+    } else {
+        set_flash_message('error', "Esta operação só pode ser realizada para usuários vinculados a um coral.");
+    }
+    header("Location: users.php");
+    exit;
+}
+
 // Excluir
 if ($action === 'delete' && $edit_id > 0) {
     if ($edit_id == $loggedUser['id']) {
@@ -337,6 +354,21 @@ require_once __DIR__ . '/layout_header.php';
                 </table>
             </div>
         <?php endif; ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($action === 'list' && !is_superadmin() && $loggedUser['role'] === 'administrador'): ?>
+    <!-- Bloco de Perigo / Reset do Coral -->
+    <div class="mt-8 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-2xl p-6">
+        <h3 class="text-red-800 dark:text-red-300 font-bold font-outfit text-base mb-2">⚠️ Zona de Perigo: Reiniciar Coral</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
+            Esta ação irá apagar permanentemente todos os outros usuários, membros cantores, cobranças, comprovantes de pagamento e arquivos hospedados deste coral. <strong>Apenas sua conta de administrador será preservada.</strong> Isso é útil para começar a administração do zero.
+        </p>
+        <a href="users.php?action=reset_choir" 
+           onclick="return confirm('ATENÇÃO: Esta ação é irreversível! Todos os dados e arquivos do coral serão excluídos permanentemente, exceto o seu usuário administrador. Tem certeza absoluta que deseja continuar?')"
+           class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition-colors shadow">
+            Reiniciar Cadastro do Coral
+        </a>
     </div>
 <?php endif; ?>
 

@@ -3,6 +3,24 @@
 require_once __DIR__ . '/config.php';
 
 $loggedUser = get_logged_user();
+
+$headerChoirLogo = null;
+$headerChoirName = null;
+if ($loggedUser && !empty($loggedUser['choir_id'])) {
+    try {
+        $stmtHeaderChoir = $pdo->prepare("SELECT name, logo FROM choirs WHERE id = ?");
+        $stmtHeaderChoir->execute([$loggedUser['choir_id']]);
+        $headerChoir = $stmtHeaderChoir->fetch();
+        if ($headerChoir) {
+            $headerChoirName = $headerChoir['name'];
+            if (!empty($headerChoir['logo'])) {
+                $headerChoirLogo = $headerChoir['logo'];
+            }
+        }
+    } catch (Exception $e) {
+        // Silently skip
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR" class="">
@@ -102,6 +120,8 @@ $loggedUser = get_logged_user();
             document.documentElement.classList.remove('dark');
         }
     </script>
+    <!-- Máscara de Campos Monetários -->
+    <script src="/www/ecoral/assets/js/currency-mask.js" defer></script>
 </head>
 <body class="bg-slate-50 dark:bg-darkbg-900 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col">
 
@@ -158,12 +178,26 @@ $loggedUser = get_logged_user();
                     </button>
                     
                     <a href="dashboard.php" class="flex items-center ml-4 lg:ml-0 gap-2">
-                        <span class="text-2xl font-black font-outfit text-coral-500 tracking-tight flex items-center gap-1">
-                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
-                            </svg>
-                            e<span class="text-slate-800 dark:text-white">Coral</span>
-                        </span>
+                        <?php if ($headerChoirLogo): ?>
+                            <div class="flex flex-col items-center leading-none select-none">
+                                <img src="uploads/<?= htmlspecialchars($headerChoirLogo) ?>" class="h-8 object-contain rounded bg-white p-0.5 border border-slate-200/50" alt="Logo Coral">
+                                <span class="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5 tracking-wider font-outfit uppercase">eCoral</span>
+                            </div>
+                        <?php else: ?>
+                            <span class="text-coral-500 flex items-center">
+                                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                                </svg>
+                            </span>
+                            <span class="text-2xl font-black font-outfit text-coral-500 tracking-tight flex items-center gap-1">
+                                e<span class="text-slate-800 dark:text-white">Coral</span>
+                            </span>
+                        <?php endif; ?>
+                        <?php if ($headerChoirName): ?>
+                            <span class="hidden md:inline text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-700 pl-2 ml-1 max-w-[150px] truncate" title="<?= htmlspecialchars($headerChoirName) ?>">
+                                <?= htmlspecialchars($headerChoirName) ?>
+                            </span>
+                        <?php endif; ?>
                     </a>
                     
                     <!-- Links Desktop -->
@@ -184,6 +218,7 @@ $loggedUser = get_logged_user();
                             <a href="members.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Membros</a>
                             <a href="billing.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Cobranças</a>
                             <a href="payments.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Pagamentos</a>
+                            <a href="financial-reset.php" class="px-3 py-2 rounded-md text-sm font-medium text-rose-500 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 transition-colors" title="Reset Financeiro">🗑️ Reset</a>
                         <?php elseif ($loggedUser['role'] === 'colaborador'): ?>
                             <a href="payments.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Pagamentos</a>
                         <?php elseif ($loggedUser['role'] === 'membro'): ?>
@@ -236,9 +271,16 @@ $loggedUser = get_logged_user();
         <div class="fixed inset-0 flex">
             <div class="relative mr-auto flex h-full w-full max-w-xs flex-col bg-white dark:bg-slate-900 py-4 shadow-xl">
                 <div class="flex items-center justify-between px-4">
-                    <span class="text-2xl font-black font-outfit text-coral-500 tracking-tight">
-                        eCoral
-                    </span>
+                    <?php if ($headerChoirLogo): ?>
+                        <div class="flex flex-col items-center leading-none select-none">
+                            <img src="uploads/<?= htmlspecialchars($headerChoirLogo) ?>" class="h-7 object-contain rounded bg-white p-0.5 border border-slate-200" alt="Logo Coral">
+                            <span class="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5 tracking-wider font-outfit uppercase">eCoral</span>
+                        </div>
+                    <?php else: ?>
+                        <span class="text-2xl font-black font-outfit text-coral-500 tracking-tight flex items-center gap-1">
+                            e<span class="text-slate-800 dark:text-white">Coral</span>
+                        </span>
+                    <?php endif; ?>
                     <button id="close-mobile-menu-btn" type="button" class="-m-2.5 rounded-md p-2.5 text-slate-700 dark:text-slate-300">
                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -264,6 +306,7 @@ $loggedUser = get_logged_user();
                             <a href="members.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Membros</a>
                             <a href="billing.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Cobranças</a>
                             <a href="payments.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Pagamentos</a>
+                            <a href="financial-reset.php" class="block px-3 py-2 rounded-md text-base font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20">🗑️ Reset Financeiro</a>
                         <?php elseif ($loggedUser['role'] === 'colaborador'): ?>
                             <a href="payments.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Pagamentos</a>
                         <?php elseif ($loggedUser['role'] === 'membro'): ?>

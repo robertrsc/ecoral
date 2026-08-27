@@ -22,7 +22,9 @@ function get_db_schema() {
             CREATE TABLE IF NOT EXISTS `choirs` (
                 `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `name` VARCHAR(255) NOT NULL,
+                `code` VARCHAR(50) UNIQUE NULL,
                 `description` TEXT NULL,
+                `logo` VARCHAR(255) NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ",
@@ -38,6 +40,7 @@ function get_db_schema() {
                 `password` VARCHAR(255) NOT NULL,
                 `role` ENUM('superadmin', 'administrador', 'financeiro', 'colaborador', 'membro') NOT NULL,
                 `voice_type` VARCHAR(100) NULL,
+                `member_code` VARCHAR(100) UNIQUE NULL,
                 `balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                 `status` VARCHAR(50) NOT NULL DEFAULT 'active',
                 `reset_token` VARCHAR(255) NULL,
@@ -56,6 +59,10 @@ function get_db_schema() {
                 `amount` DECIMAL(10,2) NOT NULL,
                 `type` VARCHAR(50) NOT NULL DEFAULT 'eventual', -- 'eventual' ou 'recurring'
                 `due_date` DATE NOT NULL,
+                `start_date` DATE NULL,
+                `end_date` DATE NULL,
+                `target_type` VARCHAR(50) NOT NULL DEFAULT 'all',
+                `target_members` TEXT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT `fk_billing_choir` FOREIGN KEY (`choir_id`) REFERENCES `choirs` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -147,6 +154,53 @@ function sync_database(PDO $pdo) {
         $results['seed_sadmin'] = ['success' => false, 'message' => "Erro ao criar superadmin: " . $e->getMessage()];
     }
     
+    // Sincronizar coluna member_code na tabela users
+    try {
+        $stmtCheck = $pdo->query("SHOW COLUMNS FROM `users` LIKE 'member_code'");
+        if ($stmtCheck->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `member_code` VARCHAR(100) UNIQUE NULL;");
+            $results['users_alter_member_code'] = ['success' => true, 'message' => "Coluna 'member_code' adicionada à tabela 'users'."];
+        }
+    } catch (PDOException $e) {
+        $results['users_alter_member_code'] = ['success' => false, 'message' => "Erro ao adicionar 'member_code': " . $e->getMessage()];
+    }
+
+    // Sincronizar colunas de recorrencia na tabela billing_items
+    try {
+        $cols = [
+            'start_date' => "DATE NULL",
+            'end_date' => "DATE NULL",
+            'target_type' => "VARCHAR(50) NOT NULL DEFAULT 'all'",
+            'target_members' => "TEXT NULL"
+        ];
+        foreach ($cols as $colName => $colDef) {
+            $stmtCheck = $pdo->query("SHOW COLUMNS FROM `billing_items` LIKE '$colName'");
+            if ($stmtCheck->rowCount() === 0) {
+                $pdo->exec("ALTER TABLE `billing_items` ADD COLUMN `$colName` $colDef;");
+                $results['billing_items_alter_' . $colName] = ['success' => true, 'message' => "Coluna '$colName' adicionada à tabela 'billing_items'."];
+            }
+        }
+    } catch (PDOException $e) {
+        $results['billing_items_alter_recorrencia'] = ['success' => false, 'message' => "Erro ao adicionar colunas de recorrência: " . $e->getMessage()];
+    }
+
+    // Preencher códigos para membros existentes que não tenham um
+    try {
+        $stmtNull = $pdo->query("SELECT id, voice_type, choir_id FROM users WHERE role = 'membro' AND member_code IS NULL");
+        $membersToUpdate = $stmtNull->fetchAll();
+        if (!empty($membersToUpdate)) {
+            $stmtUpdateCode = $pdo->prepare("UPDATE users SET member_code = ? WHERE id = ?");
+            foreach ($membersToUpdate as $m) {
+                // Generate code using global helper
+                $code = get_or_generate_member_code($pdo, $m['voice_type'], $m['choir_id'], $m['id']);
+                $stmtUpdateCode->execute([$code, $m['id']]);
+            }
+            $results['users_fill_codes'] = ['success' => true, 'message' => count($membersToUpdate) . " membros existentes atualizados com um código único."];
+        }
+    } catch (PDOException $e) {
+        $results['users_fill_codes'] = ['success' => false, 'message' => "Erro ao preencher códigos de membros: " . $e->getMessage()];
+    }
+
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
     return $results;
 }

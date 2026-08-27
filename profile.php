@@ -45,12 +45,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (!$error) {
                 try {
+                    $member_code = $user['member_code'];
+                    if ($user['role'] === 'membro' && (!$member_code || $user['voice_type'] !== $voice_type)) {
+                        $member_code = get_or_generate_member_code($pdo, $voice_type, $user['choir_id'], $user['id']);
+                    }
+                    
                     if ($passwordChange) {
-                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, password = ? WHERE id = ?");
-                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $hashedPassword, $user['id']]);
+                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, password = ? WHERE id = ?");
+                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $member_code, $hashedPassword, $user['id']]);
                     } else {
-                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ? WHERE id = ?");
-                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $user['id']]);
+                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, member_code = ? WHERE id = ?");
+                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $member_code, $user['id']]);
                     }
                     
                     $success = 'Perfil atualizado com sucesso!';
@@ -87,6 +92,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($error): ?>
             <div class="mb-4 p-3 rounded-lg text-sm bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
                 <?= htmlspecialchars($error) ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($user['role'] === 'membro'): ?>
+            <div class="mb-6 p-4 rounded-xl border border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between select-none">
+                <div>
+                    <h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Código Identificador de Membro</h3>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Use este código para pagamentos de terceiros e identificação.</p>
+                </div>
+                <?php if (!empty($user['member_code'])): ?>
+                    <span class="inline-flex items-center gap-1.5 cursor-pointer bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-300 font-mono font-bold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700/50 transition-all active:scale-95" 
+                          onclick="copyToClipboard('<?= htmlspecialchars($user['member_code']) ?>', this)"
+                          title="Clique para copiar o código">
+                        <span class="code-text"><?= htmlspecialchars($user['member_code']) ?></span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-400 copy-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-emerald-500 check-icon hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </span>
+                <?php else: ?>
+                    <span class="text-xs text-slate-400 dark:text-slate-500">Não gerado</span>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 
@@ -174,6 +203,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
     </div>
 </div>
+
+<script>
+function copyToClipboard(text, element) {
+    if (!navigator.clipboard) {
+        // Fallback para navegadores antigos
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";  // evitar rolagem
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showCopiedState(element);
+        } catch (err) {
+            console.error('Erro ao copiar código: ', err);
+        }
+        document.body.removeChild(textArea);
+        return;
+    }
+    
+    navigator.clipboard.writeText(text).then(function() {
+        showCopiedState(element);
+    }, function(err) {
+        console.error('Erro ao copiar código: ', err);
+    });
+}
+
+function showCopiedState(element) {
+    const copyIcon = element.querySelector('.copy-icon');
+    const checkIcon = element.querySelector('.check-icon');
+    const codeText = element.querySelector('.code-text');
+    
+    if (copyIcon && checkIcon && codeText) {
+        const originalText = codeText.textContent;
+        codeText.textContent = 'Copiado!';
+        element.classList.add('bg-emerald-500', 'text-white', 'border-emerald-600');
+        element.classList.remove('bg-slate-100', 'hover:bg-slate-200', 'dark:bg-slate-800', 'dark:hover:bg-slate-700', 'text-slate-700', 'dark:text-slate-300', 'border-slate-200', 'dark:border-slate-700/50');
+        copyIcon.classList.add('hidden');
+        checkIcon.classList.remove('hidden');
+        
+        setTimeout(function() {
+            codeText.textContent = originalText;
+            element.classList.remove('bg-emerald-500', 'text-white', 'border-emerald-600');
+            element.classList.add('bg-slate-100', 'hover:bg-slate-200', 'dark:bg-slate-800', 'dark:hover:bg-slate-700', 'text-slate-700', 'dark:text-slate-300', 'border-slate-200', 'dark:border-slate-700/50');
+            copyIcon.classList.remove('hidden');
+            checkIcon.classList.add('hidden');
+        }, 1500);
+    }
+}
+</script>
 
 <?php
 require_once __DIR__ . '/layout_footer.php';
