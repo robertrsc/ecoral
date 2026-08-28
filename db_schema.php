@@ -43,6 +43,14 @@ function get_db_schema() {
                 `member_code` VARCHAR(100) UNIQUE NULL,
                 `balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                 `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+                `cpf` VARCHAR(20) NULL,
+                `rg` VARCHAR(20) NULL,
+                `address` VARCHAR(255) NULL,
+                `address_number` VARCHAR(50) NULL,
+                `address_neighborhood` VARCHAR(100) NULL,
+                `address_zip_code` VARCHAR(20) NULL,
+                `address_city` VARCHAR(100) NULL,
+                `address_state` VARCHAR(2) NULL,
                 `reset_token` VARCHAR(255) NULL,
                 `reset_expires` DATETIME NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -163,6 +171,29 @@ function sync_database(PDO $pdo) {
         }
     } catch (PDOException $e) {
         $results['users_alter_member_code'] = ['success' => false, 'message' => "Erro ao adicionar 'member_code': " . $e->getMessage()];
+    }
+
+    // Sincronizar novas colunas de perfil na tabela users
+    try {
+        $profileCols = [
+            'cpf' => "VARCHAR(20) NULL",
+            'rg' => "VARCHAR(20) NULL",
+            'address' => "VARCHAR(255) NULL",
+            'address_number' => "VARCHAR(50) NULL",
+            'address_neighborhood' => "VARCHAR(100) NULL",
+            'address_zip_code' => "VARCHAR(20) NULL",
+            'address_city' => "VARCHAR(100) NULL",
+            'address_state' => "VARCHAR(2) NULL"
+        ];
+        foreach ($profileCols as $colName => $colDef) {
+            $stmtCheck = $pdo->query("SHOW COLUMNS FROM `users` LIKE '$colName'");
+            if ($stmtCheck->rowCount() === 0) {
+                $pdo->exec("ALTER TABLE `users` ADD COLUMN `$colName` $colDef;");
+                $results['users_alter_' . $colName] = ['success' => true, 'message' => "Coluna '$colName' adicionada à tabela 'users'."];
+            }
+        }
+    } catch (PDOException $e) {
+        $results['users_alter_profile_columns'] = ['success' => false, 'message' => "Erro ao adicionar colunas de perfil em users: " . $e->getMessage()];
     }
 
     // Sincronizar colunas de branding na tabela choirs (code e logo)

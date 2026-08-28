@@ -30,6 +30,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $role = trim($_POST['role'] ?? '');
     
+    $cpf = trim($_POST['cpf'] ?? '');
+    $rg = trim($_POST['rg'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $address_number = trim($_POST['address_number'] ?? '');
+    $address_neighborhood = trim($_POST['address_neighborhood'] ?? '');
+    $address_zip_code = trim($_POST['address_zip_code'] ?? '');
+    $address_city = trim($_POST['address_city'] ?? '');
+    $address_state = trim($_POST['address_state'] ?? '');
+    
     // Identificar coral_id
     if (is_superadmin()) {
         $choir_id = intval($_POST['choir_id'] ?? 0);
@@ -58,8 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = 'A senha é obrigatória para novos usuários.';
                     } else {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, username, password, role, status) VALUES (?, ?, ?, ?, ?, ?, 'active')");
-                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role]);
+                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, username, password, role, status, cpf, rg, address, address_number, address_neighborhood, address_zip_code, address_city, address_state) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state]);
                         set_flash_message('success', "Usuário '$name' criado com sucesso.");
                         header("Location: users.php");
                         exit;
@@ -79,11 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (!empty($password)) {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, password = ?, role = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, password = ?, role = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
                     } else {
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, role = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $username, $role, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, role = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $username, $role, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
                     }
                     set_flash_message('success', "Usuário '$name' atualizado com sucesso.");
                     header("Location: users.php");
@@ -270,6 +279,81 @@ require_once __DIR__ . '/layout_header.php';
                 </div>
             </div>
 
+            <!-- Seção de Documentação -->
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Documentação</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="cpf" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">CPF</label>
+                        <input type="text" name="cpf" id="cpf" value="<?= htmlspecialchars($user_data['cpf'] ?? '') ?>" placeholder="000.000.000-00"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div>
+                        <label for="rg" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Identidade (RG)</label>
+                        <input type="text" name="rg" id="rg" value="<?= htmlspecialchars($user_data['rg'] ?? '') ?>" placeholder="Número da identidade"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção de Endereço -->
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Endereço Residencial</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="address_zip_code" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">CEP</label>
+                        <input type="text" name="address_zip_code" id="address_zip_code" value="<?= htmlspecialchars($user_data['address_zip_code'] ?? '') ?>" placeholder="00000-000"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="address" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Endereço Completo (Rua/Avenida)</label>
+                        <input type="text" name="address" id="address" value="<?= htmlspecialchars($user_data['address'] ?? '') ?>" placeholder="Rua, Avenida, etc."
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="address_number" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Número</label>
+                        <input type="text" name="address_number" id="address_number" value="<?= htmlspecialchars($user_data['address_number'] ?? '') ?>" placeholder="Ex: 123, Apto 4"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div>
+                        <label for="address_neighborhood" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Bairro</label>
+                        <input type="text" name="address_neighborhood" id="address_neighborhood" value="<?= htmlspecialchars($user_data['address_neighborhood'] ?? '') ?>" placeholder="Ex: Centro"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="md:col-span-2">
+                        <label for="address_city" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Cidade</label>
+                        <input type="text" name="address_city" id="address_city" value="<?= htmlspecialchars($user_data['address_city'] ?? '') ?>" placeholder="Ex: São Paulo"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div>
+                        <label for="address_state" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Estado (UF)</label>
+                        <select name="address_state" id="address_state"
+                                class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                            <option value="">Selecione...</option>
+                            <?php
+                            $ufs = [
+                                'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas', 'BA' => 'Bahia',
+                                'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo', 'GO' => 'Goiás',
+                                'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul', 'MG' => 'Minas Gerais',
+                                'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná', 'PE' => 'Pernambuco', 'PI' => 'Piauí',
+                                'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte', 'RS' => 'Rio Grande do Sul',
+                                'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina', 'SP' => 'São Paulo',
+                                'SE' => 'Sergipe', 'TO' => 'Tocantins'
+                            ];
+                            foreach ($ufs as $uf => $ufName) {
+                                $selected = (isset($user_data['address_state']) && $user_data['address_state'] === $uf) ? 'selected' : '';
+                                echo "<option value=\"$uf\" $selected>$uf - $ufName</option>";
+                            }
+                            ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700/50">
                 <div>
                     <label for="username" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Nome de Usuário *</label>
@@ -371,6 +455,40 @@ require_once __DIR__ . '/layout_header.php';
         </a>
     </div>
 <?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Máscara CPF: 000.000.000-00
+    const cpfInput = document.getElementById('cpf');
+    if (cpfInput) {
+        cpfInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 11) value = value.slice(0, 11);
+            if (value.length > 9) {
+                value = value.replace(/^(\d{3})(\d{3})(\d{3})(\d{1,2})$/, '$1.$2.$3-$4');
+            } else if (value.length > 6) {
+                value = value.replace(/^(\d{3})(\d{3})(\d{1,3})$/, '$1.$2.$3');
+            } else if (value.length > 3) {
+                value = value.replace(/^(\d{3})(\d{1,3})$/, '$1.$2');
+            }
+            e.target.value = value;
+        });
+    }
+
+    // Máscara CEP: 00000-000
+    const cepInput = document.getElementById('address_zip_code');
+    if (cepInput) {
+        cepInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 8) value = value.slice(0, 8);
+            if (value.length > 5) {
+                value = value.replace(/^(\d{5})(\d{1,3})$/, '$1-$2');
+            }
+            e.target.value = value;
+        });
+    }
+});
+</script>
 
 <?php
 require_once __DIR__ . '/layout_footer.php';

@@ -17,6 +17,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     
+    $cpf = trim($_POST['cpf'] ?? '');
+    $rg = trim($_POST['rg'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $address_number = trim($_POST['address_number'] ?? '');
+    $address_neighborhood = trim($_POST['address_neighborhood'] ?? '');
+    $address_zip_code = trim($_POST['address_zip_code'] ?? '');
+    $address_city = trim($_POST['address_city'] ?? '');
+    $address_state = trim($_POST['address_state'] ?? '');
+    
     if (empty($name) || empty($email)) {
         $error = 'Por favor, preencha o Nome e o E-mail.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -51,11 +60,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     if ($passwordChange) {
-                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, password = ? WHERE id = ?");
-                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $member_code, $hashedPassword, $user['id']]);
+                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, password = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $member_code, $hashedPassword, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $user['id']]);
                     } else {
-                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, member_code = ? WHERE id = ?");
-                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $member_code, $user['id']]);
+                        $stmtUpdate = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmtUpdate->execute([$name, $email, $phone, $voice_type, $member_code, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $user['id']]);
                     }
                     
                     $success = 'Perfil atualizado com sucesso!';
@@ -169,6 +178,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
 
+            <!-- Seção de Documentação -->
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                <h3 class="text-sm font-bold text-slate-800 dark:text-white mb-3">Documentação</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="cpf" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">CPF</label>
+                        <input type="text" name="cpf" id="cpf" value="<?= htmlspecialchars($user['cpf'] ?? '') ?>" placeholder="000.000.000-00"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div>
+                        <label for="rg" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Identidade (RG)</label>
+                        <input type="text" name="rg" id="rg" value="<?= htmlspecialchars($user['rg'] ?? '') ?>" placeholder="Número da identidade"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção de Endereço -->
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                <h3 class="text-sm font-bold text-slate-800 dark:text-white mb-3">Endereço Residencial</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="address_zip_code" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">CEP</label>
+                        <input type="text" name="address_zip_code" id="address_zip_code" value="<?= htmlspecialchars($user['address_zip_code'] ?? '') ?>" placeholder="00000-000"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="address" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Endereço Completo (Rua/Avenida)</label>
+                        <input type="text" name="address" id="address" value="<?= htmlspecialchars($user['address'] ?? '') ?>" placeholder="Rua, Avenida, etc."
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="address_number" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Número</label>
+                        <input type="text" name="address_number" id="address_number" value="<?= htmlspecialchars($user['address_number'] ?? '') ?>" placeholder="Ex: 123, Apto 4"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div>
+                        <label for="address_neighborhood" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Bairro</label>
+                        <input type="text" name="address_neighborhood" id="address_neighborhood" value="<?= htmlspecialchars($user['address_neighborhood'] ?? '') ?>" placeholder="Ex: Centro"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="md:col-span-2">
+                        <label for="address_city" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Cidade</label>
+                        <input type="text" name="address_city" id="address_city" value="<?= htmlspecialchars($user['address_city'] ?? '') ?>" placeholder="Ex: São Paulo"
+                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                    </div>
+                    <div>
+                        <label for="address_state" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Estado (UF)</label>
+                        <select name="address_state" id="address_state"
+                                class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                            <option value="">Selecione...</option>
+                            <?php
+                            $ufs = [
+                                'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas', 'BA' => 'Bahia',
+                                'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo', 'GO' => 'Goiás',
+                                'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul', 'MG' => 'Minas Gerais',
+                                'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná', 'PE' => 'Pernambuco', 'PI' => 'Piauí',
+                                'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte', 'RS' => 'Rio Grande do Sul',
+                                'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina', 'SP' => 'São Paulo',
+                                'SE' => 'Sergipe', 'TO' => 'Tocantins'
+                            ];
+                            foreach ($ufs as $uf => $ufName) {
+                                $selected = (isset($user['address_state']) && $user['address_state'] === $uf) ? 'selected' : '';
+                                echo "<option value=\"$uf\" $selected>$uf - $ufName</option>";
+                            }
+                            ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
                 <h3 class="text-sm font-bold text-slate-800 dark:text-white mb-3">Alterar Senha</h3>
                 <p class="text-xs text-slate-400 mb-4">Caso não deseje alterar sua senha, deixe os campos abaixo em branco.</p>
@@ -205,6 +289,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Máscara CPF: 000.000.000-00
+    const cpfInput = document.getElementById('cpf');
+    if (cpfInput) {
+        cpfInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 11) value = value.slice(0, 11);
+            if (value.length > 9) {
+                value = value.replace(/^(\d{3})(\d{3})(\d{3})(\d{1,2})$/, '$1.$2.$3-$4');
+            } else if (value.length > 6) {
+                value = value.replace(/^(\d{3})(\d{3})(\d{1,3})$/, '$1.$2.$3');
+            } else if (value.length > 3) {
+                value = value.replace(/^(\d{3})(\d{1,3})$/, '$1.$2');
+            }
+            e.target.value = value;
+        });
+    }
+
+    // Máscara CEP: 00000-000
+    const cepInput = document.getElementById('address_zip_code');
+    if (cepInput) {
+        cepInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 8) value = value.slice(0, 8);
+            if (value.length > 5) {
+                value = value.replace(/^(\d{5})(\d{1,3})$/, '$1-$2');
+            }
+            e.target.value = value;
+        });
+    }
+});
+
 function copyToClipboard(text, element) {
     if (!navigator.clipboard) {
         // Fallback para navegadores antigos
