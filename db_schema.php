@@ -146,6 +146,26 @@ function get_db_schema() {
                 CONSTRAINT `fk_er_member` FOREIGN KEY (`member_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
                 UNIQUE KEY `uk_event_member` (`event_id`, `member_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ",
+        
+        "shared_files" => "
+            CREATE TABLE IF NOT EXISTS `shared_files` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `choir_id` INT NOT NULL,
+                `title` VARCHAR(255) NOT NULL,
+                `filename` VARCHAR(255) NOT NULL,
+                `original_name` VARCHAR(255) NOT NULL,
+                `file_type` VARCHAR(100) NOT NULL,
+                `file_size` INT NOT NULL,
+                `target_type` VARCHAR(50) NOT NULL DEFAULT 'all',
+                `target_voice_type` VARCHAR(100) NULL,
+                `target_member_id` INT NULL,
+                `uploaded_by` INT NOT NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_sf_choir` FOREIGN KEY (`choir_id`) REFERENCES `choirs` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_sf_member` FOREIGN KEY (`target_member_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_sf_uploader` FOREIGN KEY (`uploaded_by`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         "
     ];
 }

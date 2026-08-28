@@ -212,6 +212,7 @@ if ($loggedUser && !empty($loggedUser['choir_id'])) {
                             <a href="backups.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Backups</a>
                             <a href="db-sync.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">DB Sync</a>
                             <a href="schedule.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Agenda</a>
+                            <a href="files.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Arquivos</a>
                         <?php elseif (is_admin_user()): ?>
                             <?php if ($loggedUser['role'] === 'administrador'): ?>
                                 <a href="users.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Usuários</a>
@@ -220,13 +221,16 @@ if ($loggedUser && !empty($loggedUser['choir_id'])) {
                             <a href="billing.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Cobranças</a>
                             <a href="payments.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Pagamentos</a>
                             <a href="schedule.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Agenda</a>
+                            <a href="files.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Arquivos</a>
                             <a href="financial-reset.php" class="px-3 py-2 rounded-md text-sm font-medium text-rose-500 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 transition-colors" title="Reset Financeiro">🗑️ Reset</a>
                         <?php elseif ($loggedUser['role'] === 'colaborador'): ?>
                             <a href="payments.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Pagamentos</a>
                             <a href="schedule.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Agenda</a>
+                            <a href="files.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Arquivos</a>
                         <?php elseif ($loggedUser['role'] === 'membro'): ?>
                             <a href="payments.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Cobranças & Comprovantes</a>
                             <a href="schedule.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Agenda</a>
+                            <a href="files.php" class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-coral-500 dark:text-slate-300 dark:hover:text-coral-400 transition-colors">Arquivos</a>
                         <?php endif; ?>
                     </nav>
                 </div>
@@ -304,6 +308,7 @@ if ($loggedUser && !empty($loggedUser['choir_id'])) {
                             <a href="backups.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Backups</a>
                             <a href="db-sync.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">DB Sync</a>
                             <a href="schedule.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Agenda</a>
+                            <a href="files.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Arquivos</a>
                         <?php elseif (is_admin_user()): ?>
                             <?php if ($loggedUser['role'] === 'administrador'): ?>
                                 <a href="users.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Usuários</a>
@@ -312,13 +317,16 @@ if ($loggedUser && !empty($loggedUser['choir_id'])) {
                             <a href="billing.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Cobranças</a>
                             <a href="payments.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Pagamentos</a>
                             <a href="schedule.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Agenda</a>
+                            <a href="files.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Arquivos</a>
                             <a href="financial-reset.php" class="block px-3 py-2 rounded-md text-base font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20">🗑️ Reset Financeiro</a>
                         <?php elseif ($loggedUser['role'] === 'colaborador'): ?>
                             <a href="payments.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Pagamentos</a>
                             <a href="schedule.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Agenda</a>
+                            <a href="files.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Arquivos</a>
                         <?php elseif ($loggedUser['role'] === 'membro'): ?>
                             <a href="payments.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Cobranças & Comprovantes</a>
                             <a href="schedule.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Agenda</a>
+                            <a href="files.php" class="block px-3 py-2 rounded-md text-base font-semibold text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800">Arquivos</a>
                         <?php endif; ?>
                     </nav>
                     
