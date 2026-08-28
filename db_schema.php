@@ -115,6 +115,37 @@ function get_db_schema() {
                 CONSTRAINT `fk_rbi_receipt` FOREIGN KEY (`receipt_id`) REFERENCES `receipts` (`id`) ON DELETE CASCADE,
                 CONSTRAINT `fk_rbi_mb` FOREIGN KEY (`member_billing_id`) REFERENCES `member_billing` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ",
+        
+        "events" => "
+            CREATE TABLE IF NOT EXISTS `events` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `choir_id` INT NOT NULL,
+                `title` VARCHAR(255) NOT NULL,
+                `start_time` DATETIME NOT NULL,
+                `end_time` DATETIME NOT NULL,
+                `location` VARCHAR(255) NULL,
+                `notes` TEXT NULL,
+                `target_type` VARCHAR(50) NOT NULL DEFAULT 'all',
+                `target_voice_type` VARCHAR(100) NULL,
+                `target_member_id` INT NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_events_choir` FOREIGN KEY (`choir_id`) REFERENCES `choirs` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_events_member` FOREIGN KEY (`target_member_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ",
+        
+        "event_responses" => "
+            CREATE TABLE IF NOT EXISTS `event_responses` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `event_id` INT NOT NULL,
+                `member_id` INT NOT NULL,
+                `response` ENUM('going', 'not_going') NOT NULL,
+                `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_er_event` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_er_member` FOREIGN KEY (`member_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+                UNIQUE KEY `uk_event_member` (`event_id`, `member_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         "
     ];
 }
