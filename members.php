@@ -16,6 +16,531 @@ $success = null;
 $action = $_GET['action'] ?? 'list';
 $edit_id = intval($_GET['id'] ?? 0);
 
+// Helper de normalização de cabeçalhos de planilha
+if (!function_exists('ecoral_normalize_header')) {
+    function ecoral_normalize_header($str) {
+        $str = mb_strtolower(trim($str));
+        $str = preg_replace('/[áàãâä]/u', 'a', $str);
+        $str = preg_replace('/[éèêë]/u', 'e', $str);
+        $str = preg_replace('/[íìîï]/u', 'i', $str);
+        $str = preg_replace('/[óòõôö]/u', 'o', $str);
+        $str = preg_replace('/[úùûü]/u', 'u', $str);
+        $str = preg_replace('/[ç]/u', 'c', $str);
+        return preg_replace('/[^a-z0-9]/', '', $str);
+    }
+}
+
+// ----------------------------------------------------
+// AÇÃO: EXPORTAR MEMBROS PARA CSV/EXCEL
+// ----------------------------------------------------
+if ($action === 'export') {
+    try {
+        $params = [];
+        $where_clauses = ["u.role = 'membro'"];
+        
+        if (!is_superadmin()) {
+            $where_clauses[] = "u.choir_id = :logged_choir_id";
+            $params[':logged_choir_id'] = $loggedUser['choir_id'];
+        } elseif (isset($_GET['choir_id']) && intval($_GET['choir_id']) > 0) {
+            $where_clauses[] = "u.choir_id = :filter_choir_id";
+            $params[':filter_choir_id'] = intval($_GET['choir_id']);
+        }
+        
+        $where_sql = implode(' AND ', $where_clauses);
+        
+        $sql = "SELECT u.*, c.name as choir_name FROM users u 
+                LEFT JOIN choirs c ON u.choir_id = c.id 
+                WHERE $where_sql 
+                ORDER BY u.choir_id ASC, u.name ASC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $membersToExport = $stmt->fetchAll();
+        
+        $filename = 'membros_coral_' . date('Y-m-d_H-i') . '.csv';
+        
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        $output = fopen('php://output', 'w');
+        fputs($output, "\xEF\xBB\xBF"); // UTF-8 BOM para Excel
+        
+        fputcsv($output, [
+            'ID do Membro',
+            'ID do Coral',
+            'Nome do Coral',
+            'Nome Completo',
+            'E-mail',
+            'Nome de Usuário',
+            'Telefone',
+            'Naipe',
+            'Status',
+            'Saldo',
+            'CPF',
+            'RG',
+            'CEP',
+            'Endereço',
+            'Número',
+            'Bairro',
+            'Cidade',
+            'UF'
+        ], ';');
+        
+        foreach ($membersToExport as $m) {
+            fputcsv($output, [
+                $m['id'],
+                $m['choir_id'],
+                $m['choir_name'] ?? '',
+                $m['name'],
+                $m['email'],
+                $m['username'],
+                $m['phone'] ?? '',
+                $m['voice_type'] ?? '',
+                $m['status'] ?? 'active',
+                number_format($m['balance'] ?? 0, 2, ',', ''),
+                $m['cpf'] ?? '',
+                $m['rg'] ?? '',
+                $m['address_zip_code'] ?? '',
+                $m['address'] ?? '',
+                $m['address_number'] ?? '',
+                $m['address_neighborhood'] ?? '',
+                $m['address_city'] ?? '',
+                $m['address_state'] ?? ''
+            ], ';');
+        }
+        
+        fclose($output);
+        exit;
+    } catch (PDOException $e) {
+        set_flash_message('error', 'Erro ao exportar membros: ' . $e->getMessage());
+        header("Location: members.php");
+        exit;
+    }
+}
+
+// ----------------------------------------------------
+// AÇÃO: DOWNLOAD DE MODELO DE IMPORTAÇÃO
+// ----------------------------------------------------
+if ($action === 'download_template') {
+    $filename = 'modelo_importacao_membros.csv';
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
+    $output = fopen('php://output', 'w');
+    fputs($output, "\xEF\xBB\xBF");
+    
+    fputcsv($output, [
+        'ID do Membro',
+        'ID do Coral',
+        'Nome Completo',
+        'E-mail',
+        'Nome de Usuário',
+        'Senha',
+        'Telefone',
+        'Naipe',
+        'Status',
+        'Saldo',
+        'CPF',
+        'RG',
+        'CEP',
+        'Endereço',
+        'Número',
+        'Bairro',
+        'Cidade',
+        'UF'
+    ], ';');
+    
+    $defaultChoirId = is_superadmin() ? 1 : $loggedUser['choir_id'];
+    
+    // Exemplo de atualização de membro existente (ID preenchido)
+    fputcsv($output, [
+        '10',
+        $defaultChoirId,
+        'Maria Silva',
+        'maria@email.com',
+        'mariasilva',
+        '', // senha em branco mantém a atual
+        '(11) 98888-7777',
+        'Soprano',
+        'active',
+        '0,00',
+        '123.456.789-00',
+        '12.345.678-9',
+        '01001-000',
+        'Praça da Sé',
+        '100',
+        'Centro',
+        'São Paulo',
+        'SP'
+    ], ';');
+    
+    // Exemplo de novo cadastro de membro (ID em branco)
+    fputcsv($output, [
+        '',
+        $defaultChoirId,
+        'João Santos',
+        'joao@email.com',
+        'joaosantos',
+        'coral123',
+        '(11) 97777-6666',
+        'Tenor',
+        'active',
+        '0,00',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        ''
+    ], ';');
+    
+    fclose($output);
+    exit;
+}
+
+// ----------------------------------------------------
+// AÇÃO: IMPORTAR MEMBROS EM LOTE (POST)
+// ----------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'import') {
+    if (!isset($_FILES['import_file']) || $_FILES['import_file']['error'] !== UPLOAD_ERR_OK) {
+        set_flash_message('error', 'Por favor, selecione um arquivo válido para importação.');
+        header("Location: members.php");
+        exit;
+    }
+
+    $fileTmpPath = $_FILES['import_file']['tmp_name'];
+    $fileName = $_FILES['import_file']['name'];
+    $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+    if (!in_array($fileExt, ['csv', 'txt', 'tsv'])) {
+        set_flash_message('error', 'Formato de arquivo não suportado. Por favor, envie um arquivo .csv de planilha.');
+        header("Location: members.php");
+        exit;
+    }
+
+    $fileHandle = fopen($fileTmpPath, 'r');
+    if (!$fileHandle) {
+        set_flash_message('error', 'Erro ao ler o arquivo enviado.');
+        header("Location: members.php");
+        exit;
+    }
+
+    // Detectar BOM UTF-8 e remover se existir
+    $bom = fread($fileHandle, 3);
+    if ($bom !== "\xEF\xBB\xBF") {
+        rewind($fileHandle);
+    }
+
+    // Auto-detectar delimitador (ponto e vírgula, vírgula ou tabulação)
+    $firstLine = fgets($fileHandle);
+    rewind($fileHandle);
+    if ($bom === "\xEF\xBB\xBF") {
+        fread($fileHandle, 3);
+    }
+
+    $semicolonCount = substr_count($firstLine, ';');
+    $commaCount = substr_count($firstLine, ',');
+    $tabCount = substr_count($firstLine, "\t");
+
+    $delimiter = ';';
+    if ($commaCount > $semicolonCount && $commaCount > $tabCount) {
+        $delimiter = ',';
+    } elseif ($tabCount > $semicolonCount && $tabCount > $commaCount) {
+        $delimiter = "\t";
+    }
+
+    // Mapeamento dos nomes de coluna aceitos para as chaves internas
+    $headerLookup = [
+        'id' => 'id',
+        'iddomembro' => 'id',
+        'idmembro' => 'id',
+        'memberid' => 'id',
+        
+        'choirid' => 'choir_id',
+        'iddocoral' => 'choir_id',
+        'idcoral' => 'choir_id',
+        
+        'name' => 'name',
+        'nome' => 'name',
+        'nomecompleto' => 'name',
+        
+        'email' => 'email',
+        'mail' => 'email',
+        
+        'username' => 'username',
+        'usuario' => 'username',
+        'nomedeusuario' => 'username',
+        
+        'password' => 'password',
+        'senha' => 'password',
+        
+        'phone' => 'phone',
+        'telefone' => 'phone',
+        'celular' => 'phone',
+        
+        'voicetype' => 'voice_type',
+        'naipe' => 'voice_type',
+        'tipodevoz' => 'voice_type',
+        'voz' => 'voice_type',
+        
+        'status' => 'status',
+        
+        'balance' => 'balance',
+        'saldo' => 'balance',
+        
+        'cpf' => 'cpf',
+        'rg' => 'rg',
+        
+        'addresszipcode' => 'address_zip_code',
+        'cep' => 'address_zip_code',
+        
+        'address' => 'address',
+        'endereco' => 'address',
+        'rua' => 'address',
+        'logradouro' => 'address',
+        
+        'addressnumber' => 'address_number',
+        'numero' => 'address_number',
+        'num' => 'address_number',
+        
+        'addressneighborhood' => 'address_neighborhood',
+        'bairro' => 'address_neighborhood',
+        
+        'addresscity' => 'address_city',
+        'cidade' => 'address_city',
+        
+        'addressstate' => 'address_state',
+        'uf' => 'address_state',
+        'estado' => 'address_state',
+    ];
+
+    // Ler linha de cabeçalho
+    $rawHeaders = fgetcsv($fileHandle, 0, $delimiter);
+    if (!$rawHeaders) {
+        fclose($fileHandle);
+        set_flash_message('error', 'O arquivo enviado está vazio.');
+        header("Location: members.php");
+        exit;
+    }
+
+    $colMap = [];
+    foreach ($rawHeaders as $idx => $hName) {
+        $norm = ecoral_normalize_header($hName);
+        if (isset($headerLookup[$norm])) {
+            $colMap[$idx] = $headerLookup[$norm];
+        }
+    }
+
+    if (empty($colMap) || (!in_array('name', $colMap) && !in_array('email', $colMap))) {
+        fclose($fileHandle);
+        set_flash_message('error', 'Cabeçalho do arquivo não reconhecido. Certifique-se de que há colunas como "Nome", "E-mail", "ID do Membro" e "ID do Coral".');
+        header("Location: members.php");
+        exit;
+    }
+
+    $created_count = 0;
+    $updated_count = 0;
+    $errors = [];
+    $rowNumber = 1;
+
+    while (($row = fgetcsv($fileHandle, 0, $delimiter)) !== false) {
+        $rowNumber++;
+        
+        $rowData = [];
+        foreach ($row as $idx => $val) {
+            if (isset($colMap[$idx])) {
+                $rowData[$colMap[$idx]] = trim($val);
+            }
+        }
+
+        if (empty(array_filter($row, function($v) { return trim($v) !== ''; }))) {
+            continue;
+        }
+
+        $member_id = intval($rowData['id'] ?? 0);
+        $choir_id = intval($rowData['choir_id'] ?? 0);
+
+        if (!is_superadmin()) {
+            $choir_id = intval($loggedUser['choir_id']);
+        } else {
+            if ($choir_id <= 0) {
+                $choir_id = intval($_POST['default_choir_id'] ?? 0);
+            }
+            if ($choir_id <= 0) {
+                $errors[] = "Linha $rowNumber: ID do Coral não foi informado.";
+                continue;
+            }
+        }
+
+        $name = trim($rowData['name'] ?? '');
+        $email = trim($rowData['email'] ?? '');
+        $username = trim($rowData['username'] ?? '');
+        $phone = trim($rowData['phone'] ?? '');
+        $voice_type = trim($rowData['voice_type'] ?? '');
+        $status = strtolower(trim($rowData['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'pending'])) {
+            $status = 'active';
+        }
+
+        if (!empty($voice_type)) {
+            $vtNorm = strtolower($voice_type);
+            if (strpos($vtNorm, 'soprano') !== false) $voice_type = 'Soprano';
+            elseif (strpos($vtNorm, 'contralto') !== false) $voice_type = 'Contralto';
+            elseif (strpos($vtNorm, 'tenor') !== false) $voice_type = 'Tenor';
+            elseif (strpos($vtNorm, 'baixo') !== false || strpos($vtNorm, 'bass') !== false) $voice_type = 'Baixo';
+        }
+
+        $cpf = trim($rowData['cpf'] ?? '');
+        $rg = trim($rowData['rg'] ?? '');
+        $address = trim($rowData['address'] ?? '');
+        $address_number = trim($rowData['address_number'] ?? '');
+        $address_neighborhood = trim($rowData['address_neighborhood'] ?? '');
+        $address_zip_code = trim($rowData['address_zip_code'] ?? '');
+        $address_city = trim($rowData['address_city'] ?? '');
+        $address_state = strtoupper(trim($rowData['address_state'] ?? ''));
+
+        $raw_balance = $rowData['balance'] ?? '0';
+        $raw_balance = str_replace('.', '', $raw_balance);
+        $raw_balance = str_replace(',', '.', $raw_balance);
+        $balance = floatval($raw_balance);
+
+        $password = $rowData['password'] ?? '';
+
+        // ----------------------------------------------------
+        // CASO A: SOBRESCREVER / ATUALIZAR MEMBRO EXISTENTE (ID > 0)
+        // ----------------------------------------------------
+        if ($member_id > 0) {
+            $stmtCheck = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'membro'");
+            $stmtCheck->execute([$member_id]);
+            $existing = $stmtCheck->fetch();
+
+            if (!$existing) {
+                $errors[] = "Linha $rowNumber: Membro com ID $member_id não foi encontrado no banco de dados.";
+                continue;
+            }
+
+            if (!is_superadmin() && $existing['choir_id'] != $loggedUser['choir_id']) {
+                $errors[] = "Linha $rowNumber: O membro com ID $member_id pertence a outro coral e não pode ser editado.";
+                continue;
+            }
+
+            if (empty($name)) $name = $existing['name'];
+            if (empty($email)) $email = $existing['email'];
+            if (empty($username)) $username = $existing['username'];
+
+            $stmtDup = $pdo->prepare("SELECT id FROM users WHERE (email = ? OR username = ?) AND id != ? LIMIT 1");
+            $stmtDup->execute([$email, $username, $member_id]);
+            if ($stmtDup->fetch()) {
+                $errors[] = "Linha $rowNumber: E-mail ($email) ou Usuário ($username) já está em uso por outro cadastro.";
+                continue;
+            }
+
+            $member_code = $existing['member_code'];
+            if (!$member_code || $existing['choir_id'] != $choir_id || $existing['voice_type'] != $voice_type) {
+                $member_code = get_or_generate_member_code($pdo, $voice_type, $choir_id, $member_id);
+            }
+
+            try {
+                if (!empty($password)) {
+                    $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+                    $stmtUpd = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, password = ?, status = ?, balance = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                    $stmtUpd->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $member_id]);
+                } else {
+                    $stmtUpd = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, status = ?, balance = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                    $stmtUpd->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $member_id]);
+                }
+
+                if ($status === 'active') {
+                    sync_recurring_billings($pdo, $choir_id, $member_id);
+                }
+
+                $updated_count++;
+            } catch (PDOException $e) {
+                $errors[] = "Linha $rowNumber: Erro ao atualizar membro ID $member_id: " . $e->getMessage();
+            }
+
+        // ----------------------------------------------------
+        // CASO B: CADASTRAR NOVO MEMBRO (ID em branco / 0)
+        // ----------------------------------------------------
+        } else {
+            if (empty($name)) {
+                $errors[] = "Linha $rowNumber: Nome é obrigatório para cadastrar um novo membro.";
+                continue;
+            }
+
+            if (empty($email)) {
+                $emailSlug = !empty($username) ? $username : strtolower(preg_replace('/[^a-z0-9]/i', '', $name));
+                $email = $emailSlug . rand(100, 999) . '@ecoral.local';
+            }
+
+            if (empty($username)) {
+                $usernameParts = explode('@', $email);
+                $username = strtolower(preg_replace('/[^a-z0-9]/i', '', $usernameParts[0]));
+                if (empty($username)) {
+                    $username = 'membro' . rand(1000, 9999);
+                }
+            }
+
+            $stmtCheckUser = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
+            $stmtCheckUser->execute([$username]);
+            if ($stmtCheckUser->fetchColumn() > 0) {
+                $username = $username . rand(10, 99);
+            }
+
+            $stmtCheckEmail = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = ?");
+            $stmtCheckEmail->execute([$email]);
+            if ($stmtCheckEmail->fetchColumn() > 0) {
+                $errors[] = "Linha $rowNumber: O e-mail '$email' já está cadastrado para outro membro.";
+                continue;
+            }
+
+            $passToHash = !empty($password) ? $password : 'coral123';
+            $hashedPassword = password_hash($passToHash, PASSWORD_BCRYPT);
+
+            $member_code = get_or_generate_member_code($pdo, $voice_type, $choir_id);
+
+            try {
+                $stmtIns = $pdo->prepare("INSERT INTO users (choir_id, name, email, phone, voice_type, member_code, username, password, role, status, balance, cpf, rg, address, address_number, address_neighborhood, address_zip_code, address_city, address_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'membro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmtIns->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state]);
+                $new_member_id = $pdo->lastInsertId();
+
+                if ($status === 'active') {
+                    sync_recurring_billings($pdo, $choir_id, $new_member_id);
+                }
+
+                $created_count++;
+            } catch (PDOException $e) {
+                $errors[] = "Linha $rowNumber: Erro ao cadastrar novo membro '$name': " . $e->getMessage();
+            }
+        }
+    }
+
+    fclose($fileHandle);
+
+    $msg = "Importação em lote concluída com sucesso! <strong>$updated_count</strong> membro(s) atualizado(s) e <strong>$created_count</strong> novo(s) membro(s) cadastrado(s).";
+    if (!empty($errors)) {
+        $msg .= "<br><br><strong>Alertas/Erros em algumas linhas:</strong><ul class='list-disc pl-5 text-xs mt-1 space-y-0.5'>";
+        foreach (array_slice($errors, 0, 10) as $err) {
+            $msg .= "<li>" . htmlspecialchars($err) . "</li>";
+        }
+        if (count($errors) > 10) {
+            $msg .= "<li>... e mais " . (count($errors) - 10) . " erro(s).</li>";
+        }
+        $msg .= "</ul>";
+        set_flash_message('warning', $msg);
+    } else {
+        set_flash_message('success', $msg);
+    }
+
+    header("Location: members.php");
+    exit;
+}
+
 // Carregar corais para dropdown se for superadmin
 $choirs = [];
 if (is_superadmin()) {
@@ -260,10 +785,28 @@ require_once __DIR__ . '/layout_header.php';
     </div>
     
     <?php if ($action === 'list'): ?>
-        <a href="members.php?action=new" 
-           class="px-3.5 py-2 bg-coral-500 hover:bg-coral-600 text-white font-semibold rounded-lg text-xs shadow-md transition-all">
-            + Novo Cantor
-        </a>
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+            <a href="members.php?action=export" 
+               class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5"
+               title="Exportar cantores atuais para planilha Excel/CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Exportar Excel</span>
+            </a>
+            <button type="button" onclick="openImportModal()" 
+                    class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5"
+                    title="Importar planilha de membros em lote">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <span>Importar em Lote</span>
+            </button>
+            <a href="members.php?action=new" 
+               class="px-3.5 py-2 bg-coral-500 hover:bg-coral-600 text-white font-semibold rounded-lg text-xs shadow-md transition-all flex items-center gap-1.5">
+                <span>+</span> Novo Cantor
+            </a>
+        </div>
     <?php else: ?>
         <a href="members.php" 
            class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-white font-semibold rounded-lg text-xs transition-all">
@@ -716,6 +1259,128 @@ function showCopiedState(element) {
             copyIcon.classList.remove('hidden');
             checkIcon.classList.add('hidden');
         }, 1500);
+    }
+}
+</script>
+
+<!-- ==============================================
+     MODAL DE IMPORTAÇÃO EM LOTE VIA PLANILHA
+     ============================================== -->
+<div id="import-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Backdrop -->
+        <div class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onclick="closeImportModal()"></div>
+
+        <!-- Conteúdo do Modal -->
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-slate-100 dark:border-slate-700/50">
+            
+            <div class="bg-slate-50 dark:bg-slate-900/80 px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+                <h3 class="text-base font-bold font-outfit text-slate-800 dark:text-white flex items-center gap-2">
+                    <span class="text-indigo-500">📤</span> Importação de Membros em Lote
+                </h3>
+                <button type="button" onclick="closeImportModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <form action="members.php?action=import" method="POST" enctype="multipart/form-data" class="p-6 space-y-5">
+                
+                <!-- Informações e Regras de Importação -->
+                <div class="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl text-xs text-indigo-900 dark:text-indigo-200 space-y-2">
+                    <div class="font-bold flex items-center gap-1 text-indigo-700 dark:text-indigo-300">
+                        <span>ℹ️</span> Regras de Processamento:
+                    </div>
+                    <ul class="list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+                        <li><strong>Sobrescrever dados existentes:</strong> Se a coluna <code>ID do Membro</code> estiver preenchida no arquivo, os dados do membro cadastrado serão atualizados.</li>
+                        <li><strong>Cadastrar novo membro:</strong> Se a coluna <code>ID do Membro</code> estiver em branco e a <code>ID do Coral</code> estiver preenchida, um novo membro será cadastrado.</li>
+                        <li>Formatos aceitos: arquivos <code>.csv</code> exportados do Excel, Google Sheets ou gerados pelo eCoral.</li>
+                    </ul>
+                </div>
+
+                <?php if (is_superadmin() && !empty($choirs)): ?>
+                    <div>
+                        <label for="default_choir_id" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                            Coral Padrão (para linhas sem ID de Coral)
+                        </label>
+                        <select name="default_choir_id" id="default_choir_id"
+                                class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all">
+                            <option value="">Selecione...</option>
+                            <?php foreach ($choirs as $c): ?>
+                                <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Upload Dropzone -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                        Selecione a Planilha (.csv) *
+                    </label>
+                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-xl hover:border-indigo-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer"
+                         onclick="document.getElementById('import_file').click()">
+                        <div class="space-y-1 text-center">
+                            <svg class="mx-auto h-10 w-10 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h24a4 4 0 004-4V20L28 8z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M28 8v12h12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <div class="flex text-xs text-slate-600 dark:text-slate-400 justify-center">
+                                <span class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Clique para escolher</span>
+                                <span class="pl-1">ou arraste o arquivo aqui</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400" id="file-name-display">Arquivos .csv separados por ';' ou ','</p>
+                        </div>
+                    </div>
+                    <input type="file" name="import_file" id="import_file" accept=".csv, .txt, .tsv" required class="hidden" onchange="updateFileNameDisplay(this)">
+                </div>
+
+                <!-- Botão para Baixar Modelo Limpo -->
+                <div class="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-700/50">
+                    <span class="text-slate-500 dark:text-slate-400">Precisa da estrutura correta?</span>
+                    <a href="members.php?action=download_template" 
+                       class="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1">
+                        <span>📥</span> Baixar Planilha Modelo
+                    </a>
+                </div>
+
+                <!-- Ações -->
+                <div class="flex justify-end gap-2 pt-3">
+                    <button type="button" onclick="closeImportModal()"
+                            class="px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" id="btn-submit-import"
+                            class="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md transition-colors flex items-center gap-1.5">
+                        <span>🚀</span> Processar Importação
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openImportModal() {
+    const modal = document.getElementById('import-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeImportModal() {
+    const modal = document.getElementById('import-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function updateFileNameDisplay(input) {
+    const display = document.getElementById('file-name-display');
+    if (input.files && input.files.length > 0) {
+        display.textContent = '📄 ' + input.files[0].name + ' (' + (input.files[0].size / 1024).toFixed(1) + ' KB)';
+        display.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-bold');
+    } else {
+        display.textContent = "Arquivos .csv separados por ';' ou ','";
+        display.classList.remove('text-indigo-600', 'dark:text-indigo-400', 'font-bold');
     }
 }
 </script>
