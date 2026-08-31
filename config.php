@@ -240,15 +240,15 @@ function get_or_generate_member_code(PDO $pdo, $voice_type, $choir_id, $exclude_
 }
 
 /**
- * Sincroniza e gera as cobranças recorrentes para os períodos que já foram alcançados.
+ * Sincroniza e gera as cobranças recorrentes para todos os períodos configurados.
  */
 function sync_recurring_billings(PDO $pdo, $choir_id = null, $member_id = null) {
-    // Sincroniza também as cobranças eventuais em aberto
+    // Sincroniza também as cobranças eventuais
     sync_eventual_billings($pdo, $choir_id, $member_id);
 
     try {
-        // Busca todos os modelos de cobrança recorrente ativos
-        $sql = "SELECT * FROM billing_items WHERE type = 'recurring' AND start_date <= CURRENT_DATE";
+        // Busca todos os modelos de cobrança recorrente do coral
+        $sql = "SELECT * FROM billing_items WHERE type = 'recurring'";
         $params = [];
         if ($choir_id !== null) {
             $sql .= " AND choir_id = ?";
@@ -262,8 +262,6 @@ function sync_recurring_billings(PDO $pdo, $choir_id = null, $member_id = null) 
             return;
         }
         
-        $today = date('Y-m-d');
-        
         foreach ($templates as $t) {
             if (empty($t['start_date']) || empty($t['end_date'])) {
                 continue;
@@ -271,6 +269,9 @@ function sync_recurring_billings(PDO $pdo, $choir_id = null, $member_id = null) 
             
             $start = new DateTime($t['start_date']);
             $end = new DateTime($t['end_date']);
+            if ($start > $end) {
+                continue;
+            }
             
             $interval = new DateInterval('P1M');
             $end_mod = (clone $end)->modify('+1 day');
@@ -324,12 +325,9 @@ function sync_recurring_billings(PDO $pdo, $choir_id = null, $member_id = null) 
                 $existing[$row['member_id']][$row['due_date']] = true;
             }
             
-            // Verifica os períodos alcançados
+            // Gerar cobranças para todas as datas mensais do período
             foreach ($period as $dt) {
                 $period_due_date = $dt->format('Y-m-d');
-                if ($period_due_date > $today) {
-                    break;
-                }
                 if ($period_due_date > $t['end_date']) {
                     break;
                 }
@@ -354,8 +352,8 @@ function sync_recurring_billings(PDO $pdo, $choir_id = null, $member_id = null) 
  */
 function sync_eventual_billings(PDO $pdo, $choir_id = null, $member_id = null) {
     try {
-        // Busca todos os itens de cobrança eventual com vencimento futuro ou hoje
-        $sql = "SELECT * FROM billing_items WHERE type = 'eventual' AND due_date >= CURRENT_DATE";
+        // Busca todos os itens de cobrança eventual do coral
+        $sql = "SELECT * FROM billing_items WHERE type = 'eventual'";
         $params = [];
         if ($choir_id !== null) {
             $sql .= " AND choir_id = ?";
