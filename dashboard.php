@@ -182,11 +182,11 @@ if (is_superadmin()) {
         // Saldo disponível na conta do membro
         $memberBalance = $user['balance'];
         
-        // Valor total de todas as cobranças em aberto para ele
+        // Valor total das cobranças em aberto vencidas ou com vencimento para hoje
         $stmtOpenCobrancas = $pdo->prepare("SELECT SUM(bi.amount - mb.paid_amount) as total_open_amount 
                                              FROM member_billing mb 
                                              JOIN billing_items bi ON mb.billing_item_id = bi.id 
-                                             WHERE mb.member_id = ? AND mb.status = 'open'");
+                                             WHERE mb.member_id = ? AND mb.status = 'open' AND mb.due_date <= CURRENT_DATE");
         $stmtOpenCobrancas->execute([$user['id']]);
         $billingStats = $stmtOpenCobrancas->fetch();
         $totalOpenAmount = $billingStats['total_open_amount'] ?? 0.00;
@@ -471,7 +471,7 @@ if (is_superadmin()) {
             <div>
                 <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total a Pagar</p>
                 <h3 class="text-3xl font-bold font-outfit text-rose-500 mt-1"><?= format_currency($totalOpenAmount) ?></h3>
-                <p class="text-[10px] text-slate-400 mt-1">Somatório de todas as mensalidades e cobranças em aberto.</p>
+                <p class="text-[10px] text-slate-400 mt-1">Cobranças vencidas ou com vencimento para hoje.</p>
             </div>
             <div class="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
