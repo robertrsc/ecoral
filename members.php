@@ -345,6 +345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'import') {
 
     $created_count = 0;
     $updated_count = 0;
+    $generatedCredentials = [];
     $errors = [];
     $rowNumber = 1;
 
@@ -499,9 +500,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'import') {
                 continue;
             }
 
-            $passToHash = !empty($password) ? $password : 'coral123';
-            $hashedPassword = password_hash($passToHash, PASSWORD_BCRYPT);
+            // Gerar senha aleatória única se não fornecida no arquivo
+            if (!empty($password)) {
+                $passToHash = $password;
+            } else {
+                $randomChars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+                $passToHash = '';
+                $maxIdx = strlen($randomChars) - 1;
+                for ($i = 0; $i < 8; $i++) {
+                    $passToHash .= $randomChars[random_int(0, $maxIdx)];
+                }
+                $generatedCredentials[] = [
+                    'name' => $name,
+                    'username' => $username,
+                    'password' => $passToHash
+                ];
+            }
 
+            $hashedPassword = password_hash($passToHash, PASSWORD_BCRYPT);
             $member_code = get_or_generate_member_code($pdo, $voice_type, $choir_id);
 
             try {
@@ -523,6 +539,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'import') {
     fclose($fileHandle);
 
     $msg = "Importação em lote concluída com sucesso! <strong>$updated_count</strong> membro(s) atualizado(s) e <strong>$created_count</strong> novo(s) membro(s) cadastrado(s).";
+    
+    if (!empty($generatedCredentials)) {
+        $msg .= "<br><br><strong>🔑 Senhas aleatórias geradas para novos membros:</strong><ul class='list-disc pl-5 text-xs mt-1 space-y-0.5 font-mono'>";
+        foreach (array_slice($generatedCredentials, 0, 15) as $cred) {
+            $msg .= "<li>" . htmlspecialchars($cred['name']) . " (Usuário: <strong>" . htmlspecialchars($cred['username']) . "</strong>) &rarr; Senha: <span class='bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-coral-600 dark:text-coral-400 font-bold border border-slate-200 dark:border-slate-700'>" . htmlspecialchars($cred['password']) . "</span></li>";
+        }
+        if (count($generatedCredentials) > 15) {
+            $msg .= "<li>... e mais " . (count($generatedCredentials) - 15) . " novo(s) membro(s).</li>";
+        }
+        $msg .= "</ul>";
+    }
+
     if (!empty($errors)) {
         $msg .= "<br><br><strong>Alertas/Erros em algumas linhas:</strong><ul class='list-disc pl-5 text-xs mt-1 space-y-0.5'>";
         foreach (array_slice($errors, 0, 10) as $err) {
@@ -534,7 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'import') {
         $msg .= "</ul>";
         set_flash_message('warning', $msg);
     } else {
-        set_flash_message('success', $msg);
+        set_flash_message('info', $msg);
     }
 
     header("Location: members.php");
