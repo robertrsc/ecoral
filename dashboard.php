@@ -306,7 +306,7 @@ if (is_superadmin()) {
             <?php if (empty($latestChoirs)): ?>
                 <div class="text-center py-8 text-sm text-slate-400">Nenhum coral cadastrado ainda.</div>
             <?php else: ?>
-                <div class="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-700/50">
+                <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700/50">
                     <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
                         <thead class="bg-slate-50 dark:bg-slate-900/60">
                             <tr>
@@ -417,7 +417,7 @@ if (is_superadmin()) {
             <?php if (empty($latestReceipts)): ?>
                 <div class="text-center py-8 text-sm text-slate-400">Nenhum comprovante enviado ainda para este coral.</div>
             <?php else: ?>
-                <div class="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-700/50">
+                <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700/50">
                     <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
                         <thead class="bg-slate-50 dark:bg-slate-900/60">
                             <tr>
@@ -504,7 +504,7 @@ if (is_superadmin()) {
             <?php if (empty($myOpenBillings)): ?>
                 <div class="text-center py-8 text-sm text-slate-400">Parabéns! Nenhuma cobrança em aberto no momento.</div>
             <?php else: ?>
-                <div class="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-700/50">
+                <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700/50">
                     <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
                         <thead class="bg-slate-50 dark:bg-slate-900/60">
                             <tr>
@@ -551,7 +551,7 @@ if (is_superadmin()) {
                 <?php if (empty($myPaidBillings)): ?>
                     <div class="text-center py-6 text-sm text-slate-400">Nenhuma cobrança paga registrada ainda.</div>
                 <?php else: ?>
-                    <div class="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-700/50">
+                    <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700/50">
                         <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
                             <thead class="bg-slate-50 dark:bg-slate-900/60">
                                 <tr>

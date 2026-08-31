@@ -266,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                         $leftover_message = "";
                         if ($leftover > 0) {
-                            $leftover_message = "<p>Como o valor do comprovante (" . format_currency($amount) . ") é maior do que o somatório das cobranças selecionadas (" . format_currency($sum_items) . "), após aprovado o seu pagamento você terá um saldo positivo no valor de <strong>" . format_currency($leftover) . "</strong>.</p>";
+                            $leftover_message = "<p>Como o valor do comprovante (" . format_currency($amount) . ") é maior do que o somatório das cobranças selecionadas (" . format_currency($sum_items) . "), após aprovado o seu pagamento você terá um saldo positivo (troco ou resíduo) no valor de <strong>" . format_currency($leftover) . "</strong>.</p>";
                         }
 
                         $body = "
@@ -722,7 +722,7 @@ require_once __DIR__ . '/layout_header.php';
                                                 class="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition-colors">
                                             Rejeitar
                                         </button>
-                                        <button type="submit" name="action" value="approve_receipt" onclick="return confirm('Deseja aprovar este comprovante? As cobranças associadas serão baixadas e leftovers inseridos no saldo.')"
+                                        <button type="submit" name="action" value="approve_receipt" onclick="return confirm('Deseja aprovar este comprovante? As cobranças associadas serão baixadas e o troco ou resíduo inserido no saldo.')"
                                                 class="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-semibold transition-colors">
                                             Aprovar
                                         </button>
