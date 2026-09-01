@@ -153,6 +153,20 @@ function format_currency($value) {
     return 'R$ ' . number_format($value, 2, ',', '.');
 }
 
+/**
+ * Converte valor digitado (ex: "1.234,56", "10,00" ou "1234.56") em float numérico puro
+ */
+function parse_currency_input($val) {
+    if ($val === null || $val === '') return 0.0;
+    if (is_numeric($val)) return floatval($val);
+    $val = trim((string)$val);
+    if (strpos($val, ',') !== false) {
+        $val = str_replace('.', '', $val);
+        $val = str_replace(',', '.', $val);
+    }
+    return floatval($val);
+}
+
 function format_date($date) {
     return date('d/m/Y', strtotime($date));
 }

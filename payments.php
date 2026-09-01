@@ -144,11 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // 2. Membro: Enviar Comprovante por Upload
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'upload_receipt') {
     // Suporta: hidden da máscara (1234.56), campo display (1.234,56), ou campo numérico puro
-    $raw_amount = $_POST['amount'] ?? $_POST['amount_display'] ?? '0';
-    // Remove pontos de milhar e troca vírgula decimal por ponto
-    $raw_amount = str_replace('.', '', $raw_amount);
-    $raw_amount = str_replace(',', '.', $raw_amount);
-    $amount = floatval($raw_amount);
+    $amount = parse_currency_input($_POST['amount'] ?? $_POST['amount_display'] ?? '0');
     
     $description = trim($_POST['description'] ?? '');
     $selected_billings = $_POST['selected_billings'] ?? []; // IDs de member_billing

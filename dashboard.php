@@ -775,6 +775,12 @@ function openHistoryModal(billingId) {
                         icon = '🔄';
                         title = 'Baixa Manual com Saldo';
                         desc = `Abatimento de <strong>${p.formatted_amount}</strong> debitado do saldo da conta do cantor. Realizado por administrador/financeiro.`;
+                    } else if (p.filename === 'manual_record') {
+                        icon = '📝';
+                        title = 'Registro / Baixa Manual';
+                        const obsMatch = p.description ? p.description.match(/Observação: (.+)$/) : null;
+                        const obsText = obsMatch ? ` Observação: <em>"${obsMatch[1]}"</em>` : '';
+                        desc = `Baixa de <strong>${p.formatted_amount}</strong> registrada manualmente por administrador/financeiro (transporte de dados / sem exigência de saldo).${obsText}`;
                     } else if (p.filename === 'voucher_deduction') {
                         icon = '🎫';
                         title = 'Pagamento via Voucher / Cortesia';

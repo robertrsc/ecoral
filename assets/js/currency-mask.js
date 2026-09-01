@@ -6,7 +6,7 @@
  * enviar o valor numérico puro (ex: 1234.56) ao servidor PHP.
  * 
  * Atributos suportados:
- *   data-currency-mask         — ativa a máscara
+ *   data-currency-mask         — ativa a máscara com pontuação automática (1.234,56)
  *   data-allow-zero="true"     — permite valor zero (padrão: false = mín 0.01)
  */
 (function () {
@@ -17,7 +17,6 @@
      */
     function parseFormatted(str) {
         if (!str) return 0;
-        // Remove pontos de milhar, troca vírgula decimal por ponto
         return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
     }
 
@@ -49,9 +48,15 @@
         input.name = originalName + '_display'; // renomeia o visível para não colidir
         input.after(hidden);
 
-        // Pré-preencher se o input já tem valor
-        const initialVal = parseFloat(input.dataset.initialValue || input.value.replace(',', '.'));
-        if (!isNaN(initialVal) && initialVal > 0) {
+        // Pré-preencher se o input já tem valor inicial
+        let initialVal = NaN;
+        if (input.dataset.initialValue !== undefined && input.dataset.initialValue !== '') {
+            initialVal = parseFloat(input.dataset.initialValue);
+        } else if (input.value !== '') {
+            initialVal = parseFormatted(input.value);
+        }
+
+        if (!isNaN(initialVal) && (initialVal > 0 || (allowZero && initialVal >= 0))) {
             input.value = formatBRL(initialVal);
             hidden.value = initialVal.toFixed(2);
         } else {
@@ -61,7 +66,12 @@
         function updateFromInput() {
             // Extrai dígitos apenas
             const raw = input.value.replace(/\D/g, '');
-            if (raw === '' || raw === '0') {
+            if (raw === '') {
+                input.value = '';
+                hidden.value = '';
+                return;
+            }
+            if (raw === '0' && !allowZero) {
                 input.value = '';
                 hidden.value = '';
                 return;
@@ -74,15 +84,13 @@
         }
 
         input.addEventListener('input', function (e) {
-            // Preservar posição do cursor apenas movendo para o final
             updateFromInput();
-            // Move cursor para o final após formatação
             const len = input.value.length;
             input.setSelectionRange(len, len);
         });
 
         input.addEventListener('keydown', function (e) {
-            // Permite: Backspace, Delete, Tab, Escape, Enter, setas
+            // Permite: Backspace, Delete, Tab, Escape, Enter, setas, Home, End
             const allowed = [
                 'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
                 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
@@ -98,9 +106,7 @@
         input.addEventListener('paste', function (e) {
             e.preventDefault();
             const pasted = (e.clipboardData || window.clipboardData).getData('text');
-            // Extrai só dígitos do valor colado
             const digits = pasted.replace(/\D/g, '');
-            // Insere no input sem duplicar
             const cur = input.value.replace(/\D/g, '');
             input.value = cur + digits;
             updateFromInput();
@@ -108,7 +114,6 @@
 
         input.addEventListener('focus', function () {
             if (!input.value) return;
-            // Move seleção para o final
             setTimeout(() => {
                 const len = input.value.length;
                 input.setSelectionRange(len, len);
@@ -147,12 +152,36 @@
                 if (node.matches && node.matches('input[data-currency-mask]')) {
                     applyMask(node);
                 }
-                node.querySelectorAll && node.querySelectorAll('input[data-currency-mask]').forEach(applyMask);
+                if (node.querySelectorAll) {
+                    node.querySelectorAll('input[data-currency-mask]').forEach(applyMask);
+                }
             });
         });
     });
-    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    if (document.body || document.documentElement) {
+        observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    }
 
-    // Expor globalmente para uso em modais abertos via JS
-    window.ecoralCurrencyMask = { apply: applyMask, init: initAll };
+    // Expor globalmente para uso em modais e scripts JS
+    window.ecoralCurrencyMask = {
+        apply: applyMask,
+        init: initAll,
+        format: formatBRL,
+        parse: parseFormatted,
+        setValue: function (inputEl, value) {
+            if (typeof inputEl === 'string') inputEl = document.querySelector(inputEl);
+            if (!inputEl) return;
+            const num = parseFloat(value);
+            const allowZero = inputEl.dataset.allowZero === 'true';
+            const hiddenName = inputEl.name.replace('_display', '');
+            const hiddenEl = inputEl.parentElement ? inputEl.parentElement.querySelector(`input[type="hidden"][name="${hiddenName}"]`) : null;
+            if (!isNaN(num) && (num > 0 || (allowZero && num >= 0))) {
+                inputEl.value = formatBRL(num);
+                if (hiddenEl) hiddenEl.value = num.toFixed(2);
+            } else {
+                inputEl.value = '';
+                if (hiddenEl) hiddenEl.value = '';
+            }
+        }
+    };
 })();

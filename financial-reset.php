@@ -62,13 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     SELECT r.filename FROM receipts r
                     JOIN users u ON r.member_id = u.id
                     WHERE u.choir_id = ?
-                      AND r.filename NOT IN ('balance_deduction','voucher_deduction')
+                      AND r.filename NOT IN ('balance_deduction','voucher_deduction','manual_record')
                 ");
                 $stmtFiles->execute([$scope_choir_id]);
             } else {
                 $stmtFiles = $pdo->query("
                     SELECT filename FROM receipts
-                    WHERE filename NOT IN ('balance_deduction','voucher_deduction')
+                    WHERE filename NOT IN ('balance_deduction','voucher_deduction','manual_record')
                 ");
             }
             $filenames = $stmtFiles->fetchAll(PDO::FETCH_COLUMN);

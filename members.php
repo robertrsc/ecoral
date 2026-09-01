@@ -595,10 +595,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $address_state = trim($_POST['address_state'] ?? '');
     
     // Suporta: hidden da máscara (1234.56), campo display (1.234,56) ou numérico puro
-    $raw_balance = $_POST['balance'] ?? $_POST['balance_display'] ?? '0';
-    $raw_balance = str_replace('.', '', $raw_balance);
-    $raw_balance = str_replace(',', '.', $raw_balance);
-    $balance = floatval($raw_balance);
+    $balance = parse_currency_input($_POST['balance'] ?? $_POST['balance_display'] ?? '0');
     
     if (is_superadmin()) {
         $choir_id = intval($_POST['choir_id'] ?? 0);
@@ -814,6 +811,11 @@ require_once __DIR__ . '/layout_header.php';
     
     <?php if ($action === 'list'): ?>
         <div class="flex items-center gap-2 flex-wrap justify-end">
+            <button type="button" onclick="submitBoardingForm()" 
+                    class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5"
+                    title="Emitir Lista de Embarque em PDF dos cantores assinalados">
+                <span>🚌</span> <span>Lista de Embarque (PDF)</span>
+            </button>
             <a href="members.php?action=export" 
                class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5"
                title="Exportar cantores atuais para planilha Excel/CSV">
@@ -1063,82 +1065,108 @@ require_once __DIR__ . '/layout_header.php';
         </form>
     </div>
 
-    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 overflow-hidden">
-        <?php if (empty($members)): ?>
-            <div class="text-center py-12 text-slate-400">
-                Nenhum cantor cadastrado. Clique em "+ Novo Cantor" para começar ou divulgue o link "Cadastre-se" no login.
-            </div>
-        <?php else: ?>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
-                    <thead class="bg-slate-50 dark:bg-slate-900/60">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Cantor</th>
-                            <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contato / Naipe</th>
-                            <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Coral</th>
-                            <th class="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Saldo</th>
-                            <th class="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700/30">
-                        <?php foreach ($members as $m): ?>
-                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-white">
-                                    <div><?= htmlspecialchars($m['name']) ?></div>
-                                    <div class="text-[10px] text-slate-400 font-mono mt-1 flex items-center gap-1 select-none">
-                                        <span>Código:</span>
-                                        <?php if (!empty($m['member_code'])): ?>
-                                            <span class="inline-flex items-center gap-1 cursor-pointer bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/60 dark:hover:bg-slate-900 text-[10px] text-slate-600 dark:text-slate-300 font-mono px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 transition-all active:scale-95" 
-                                                  onclick="copyToClipboard('<?= htmlspecialchars($m['member_code']) ?>', this)"
-                                                  title="Clique para copiar o código">
-                                                <span class="code-text"><?= htmlspecialchars($m['member_code']) ?></span>
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-slate-400 copy-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                </svg>
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-emerald-500 check-icon hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="text-slate-400 dark:text-slate-500">Não gerado</span>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                    <div><?= htmlspecialchars($m['email']) ?></div>
-                                    <div class="text-xs text-slate-400">
-                                        <?= htmlspecialchars($m['phone'] ?? '-') ?> | 
-                                        <span class="font-semibold text-coral-500"><?= htmlspecialchars($m['voice_type'] ?? 'Indefinido') ?></span>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                    <?= htmlspecialchars($m['choir_name'] ?? 'Sem Coral') ?>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-emerald-500">
-                                    <?= format_currency($m['balance']) ?>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-center text-xs">
-                                    <span class="px-2.5 py-0.5 rounded-full font-semibold capitalize
-                                        <?= $m['status'] === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-950/20 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 animate-pulse' ?>">
-                                        <?= $m['status'] === 'active' ? 'Ativo' : 'Pendente' ?>
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-medium space-x-2">
-                                    <?php if ((is_superadmin() || (is_impersonating() && is_superadmin(get_original_user()))) && $m['id'] != $loggedUser['id']): ?>
-                                        <a href="impersonate.php?action=start&id=<?= $m['id'] ?>" class="text-indigo-500 hover:text-indigo-600 font-bold">Usar como</a>
-                                    <?php endif; ?>
-                                    <?php if ($m['status'] === 'pending'): ?>
-                                        <a href="members.php?action=approve&id=<?= $m['id'] ?>" class="text-green-500 hover:text-green-600 font-bold">Aprovar</a>
-                                    <?php endif; ?>
-                                    <a href="members.php?action=edit&id=<?= $m['id'] ?>" class="text-coral-500 hover:text-coral-600 font-bold">Editar</a>
-                                    <a href="members.php?action=delete&id=<?= $m['id'] ?>" onclick="return confirm('Deseja realmente excluir este cantor? Todas as suas cobranças e histórico serão apagados permanentemente.')" class="text-red-500 hover:text-red-600 font-bold">Excluir</a>
-                                </td>
+    <!-- Barra de Ação Flutuante para Lista de Embarque -->
+    <div id="boarding_action_bar" class="hidden mb-4 p-3.5 rounded-xl bg-gradient-to-r from-rose-500 to-coral-600 text-white shadow-md flex flex-col sm:flex-row items-center justify-between gap-3 transition-all">
+        <div class="flex items-center gap-2 text-xs md:text-sm font-bold">
+            <span>🚌</span>
+            <span>Lista de Embarque: <strong id="selected_count_badge" class="bg-white/20 px-2 py-0.5 rounded-md text-white">0</strong> cantor(es) assinalado(s)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" onclick="deselectAllMembers()" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-bold rounded-lg text-xs transition-all">
+                Desmarcar Todos
+            </button>
+            <button type="button" onclick="submitBoardingForm()" class="px-4 py-1.5 bg-white text-rose-600 hover:bg-rose-50 font-extrabold rounded-lg text-xs shadow transition-all flex items-center gap-1.5">
+                📄 Emitir Lista de Embarque (PDF)
+            </button>
+        </div>
+    </div>
+
+    <form id="boarding_form" action="boarding-pdf.php" method="POST" target="_blank">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 overflow-hidden">
+            <?php if (empty($members)): ?>
+                <div class="text-center py-12 text-slate-400">
+                    Nenhum cantor cadastrado. Clique em "+ Novo Cantor" para começar ou divulgue o link "Cadastre-se" no login.
+                </div>
+            <?php else: ?>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
+                        <thead class="bg-slate-50 dark:bg-slate-900/60">
+                            <tr>
+                                <th class="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">
+                                    <input type="checkbox" id="select_all_members_cb" onchange="toggleSelectAllMembers(this)" class="w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 cursor-pointer" title="Assinalar / Desmarcar Todos">
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Cantor</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contato / Naipe</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Coral</th>
+                                <th class="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Saldo</th>
+                                <th class="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Ações</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/30">
+                            <?php foreach ($members as $m): ?>
+                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                    <td class="px-4 py-4 whitespace-nowrap text-center">
+                                        <input type="checkbox" name="member_ids[]" value="<?= $m['id'] ?>" onchange="updateBoardingBar()" class="member-select-cb w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 cursor-pointer">
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-white">
+                                        <div><?= htmlspecialchars($m['name']) ?></div>
+                                        <div class="text-[10px] text-slate-400 font-mono mt-1 flex items-center gap-1 select-none">
+                                            <span>Código:</span>
+                                            <?php if (!empty($m['member_code'])): ?>
+                                                <span class="inline-flex items-center gap-1 cursor-pointer bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/60 dark:hover:bg-slate-900 text-[10px] text-slate-600 dark:text-slate-300 font-mono px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 transition-all active:scale-95" 
+                                                      onclick="copyToClipboard('<?= htmlspecialchars($m['member_code']) ?>', this)"
+                                                      title="Clique para copiar o código">
+                                                    <span class="code-text"><?= htmlspecialchars($m['member_code']) ?></span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-slate-400 copy-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-emerald-500 check-icon hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="text-slate-400 dark:text-slate-500">Não gerado</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                        <div><?= htmlspecialchars($m['email']) ?></div>
+                                        <div class="text-xs text-slate-400">
+                                            <?= htmlspecialchars($m['phone'] ?? '-') ?> | 
+                                            <span class="font-semibold text-coral-500"><?= htmlspecialchars($m['voice_type'] ?? 'Indefinido') ?></span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                        <?= htmlspecialchars($m['choir_name'] ?? 'Sem Coral') ?>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-emerald-500">
+                                        <?= format_currency($m['balance']) ?>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-center text-xs">
+                                        <span class="px-2.5 py-0.5 rounded-full font-semibold capitalize
+                                            <?= $m['status'] === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-950/20 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 animate-pulse' ?>">
+                                            <?= $m['status'] === 'active' ? 'Ativo' : 'Pendente' ?>
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-medium space-x-2">
+                                        <?php if ((is_superadmin() || (is_impersonating() && is_superadmin(get_original_user()))) && $m['id'] != $loggedUser['id']): ?>
+                                            <a href="impersonate.php?action=start&id=<?= $m['id'] ?>" class="text-indigo-500 hover:text-indigo-600 font-bold">Usar como</a>
+                                        <?php endif; ?>
+                                        <?php if ($m['status'] === 'pending'): ?>
+                                            <a href="members.php?action=approve&id=<?= $m['id'] ?>" class="text-green-500 hover:text-green-600 font-bold">Aprovar</a>
+                                        <?php endif; ?>
+                                        <a href="members.php?action=edit&id=<?= $m['id'] ?>" class="text-coral-500 hover:text-coral-600 font-bold">Editar</a>
+                                        <a href="members.php?action=delete&id=<?= $m['id'] ?>" onclick="return confirm('Deseja realmente excluir este cantor? Todas as suas cobranças e histórico serão apagados permanentemente.')" class="text-red-500 hover:text-red-600 font-bold">Excluir</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </form>
             
             <!-- Paginação -->
             <?php
@@ -1204,7 +1232,6 @@ require_once __DIR__ . '/layout_header.php';
                     </div>
                 </div>
             <?php endif; ?>
-        <?php endif; ?>
     </div>
 <?php endif; ?>
 
@@ -1410,6 +1437,45 @@ function updateFileNameDisplay(input) {
         display.textContent = "Arquivos .csv separados por ';' ou ','";
         display.classList.remove('text-indigo-600', 'dark:text-indigo-400', 'font-bold');
     }
+}
+
+function toggleSelectAllMembers(master) {
+    const cbs = document.querySelectorAll('.member-select-cb');
+    cbs.forEach(cb => cb.checked = master.checked);
+    updateBoardingBar();
+}
+
+function deselectAllMembers() {
+    const master = document.getElementById('select_all_members_cb');
+    if (master) master.checked = false;
+    const cbs = document.querySelectorAll('.member-select-cb');
+    cbs.forEach(cb => cb.checked = false);
+    updateBoardingBar();
+}
+
+function updateBoardingBar() {
+    const checked = document.querySelectorAll('.member-select-cb:checked');
+    const bar = document.getElementById('boarding_action_bar');
+    const badge = document.getElementById('selected_count_badge');
+    const count = checked.length;
+    
+    if (badge) badge.innerText = count;
+    if (bar) {
+        if (count > 0) {
+            bar.classList.remove('hidden');
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+}
+
+function submitBoardingForm() {
+    const checked = document.querySelectorAll('.member-select-cb:checked');
+    if (checked.length === 0) {
+        alert('Por favor, assinale pelo menos um membro na lista abaixo para gerar a Lista de Embarque em PDF.');
+        return;
+    }
+    document.getElementById('boarding_form').submit();
 }
 </script>
 

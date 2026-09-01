@@ -46,10 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'new') {
     $title = trim($_POST['title'] ?? '');
     $description = trim($_POST['description'] ?? '');
     // Suporta: hidden da máscara (1234.56), campo display (1.234,56) ou numérico puro
-    $raw_amount = $_POST['amount'] ?? $_POST['amount_display'] ?? '0';
-    $raw_amount = str_replace('.', '', $raw_amount);
-    $raw_amount = str_replace(',', '.', $raw_amount);
-    $amount = floatval($raw_amount);
+    $amount = parse_currency_input($_POST['amount'] ?? $_POST['amount_display'] ?? '0');
     $type = trim($_POST['type'] ?? 'eventual'); // eventual ou recurring
     
     // Alocação de membros
@@ -124,10 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'new') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'manual_payment') {
     $mb_id = intval($_POST['member_billing_id'] ?? 0);
     // Suporta: hidden da máscara (1234.56), campo display (1.234,56) ou numérico puro
-    $raw_pay = $_POST['pay_amount'] ?? $_POST['pay_amount_display'] ?? '0';
-    $raw_pay = str_replace('.', '', $raw_pay);
-    $raw_pay = str_replace(',', '.', $raw_pay);
-    $pay_amount = floatval($raw_pay);
+    $pay_amount = parse_currency_input($_POST['pay_amount'] ?? $_POST['pay_amount_display'] ?? '0');
     $payment_source = trim($_POST['payment_source_hidden'] ?? $_POST['payment_source'] ?? 'balance');
     $voucher_code = trim($_POST['voucher_code'] ?? '');
     
@@ -177,11 +171,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 
                 $desc = "Baixa manual realizada por " . $loggedUser['name'] . " usando saldo da conta.";
                 $receipt_filename = 'balance_deduction';
-            } else {
+            } elseif ($payment_source === 'voucher') {
                 // Voucher: saldo do membro não é tocado
                 $obs_part = !empty($voucher_code) ? " Observação: " . $voucher_code : "";
                 $desc = "Baixa manual via Voucher / Cortesia (Registrado por " . $loggedUser['name'] . ")." . $obs_part;
                 $receipt_filename = 'voucher_deduction';
+            } else {
+                // Registro manual / Baixa sem exigência de saldo em conta
+                $obs_part = !empty($voucher_code) ? " Observação: " . $voucher_code : "";
+                $desc = "Baixa manual (Registro direto / transporte de registros) realizada por " . $loggedUser['name'] . "." . $obs_part;
+                $receipt_filename = 'manual_record';
             }
             
             // Adicionar ao valor pago da cobrança
@@ -250,7 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             <p style='margin-top: 32px; font-size: 12px; color: #94a3b8;'>Atenciosamente,<br>Equipe " . htmlspecialchars($choirNameEmail) . "</p>
                         </div>
                     ";
-                } else {
+                } elseif ($payment_source === 'voucher') {
                     $body = "
                         <div style='font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #f1f5f9; padding: 24px; border-radius: 12px; background-color: #ffffff;'>
                             " . $logoEmailHtml . "
@@ -260,6 +259,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             <div style='background-color: #f8fafc; border-left: 4px solid #10b981; padding: 16px; margin: 20px 0; border-radius: 4px;'>
                                 <p style='margin: 0 0 8px 0;'><strong>Cobrança:</strong> " . htmlspecialchars($billingTitleFormatted) . "</p>
                                 <p style='margin: 0 0 8px 0;'><strong>Valor Abatido:</strong> " . format_currency($pay_amount) . "</p>
+                                " . (!empty($voucher_code) ? "<p style='margin: 0 0 8px 0;'><strong>Observação:</strong> " . htmlspecialchars($voucher_code) . "</p>" : "") . "
+                                <p style='margin: 0;'><strong>Total Já Pago neste Item:</strong> " . format_currency($new_paid_amount) . " (de " . format_currency($mbData['amount']) . ")</p>
+                            </div>
+                            
+                            " . $status_message . "
+                            
+                            <p style='margin-top: 32px; font-size: 12px; color: #94a3b8;'>Atenciosamente,<br>Equipe " . htmlspecialchars($choirNameEmail) . "</p>
+                        </div>
+                    ";
+                } else {
+                    $body = "
+                        <div style='font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #f1f5f9; padding: 24px; border-radius: 12px; background-color: #ffffff;'>
+                            " . $logoEmailHtml . "
+                            <h2 style='color: #f43f5e; margin-top: 0;'>Olá, " . htmlspecialchars($mbData['member_name']) . "!</h2>
+                            <p>Informamos que foi registrada uma <strong>baixa manual de pagamento</strong> em sua cobrança pela administração do coral.</p>
+                            
+                            <div style='background-color: #f8fafc; border-left: 4px solid #f43f5e; padding: 16px; margin: 20px 0; border-radius: 4px;'>
+                                <p style='margin: 0 0 8px 0;'><strong>Cobrança:</strong> " . htmlspecialchars($billingTitleFormatted) . "</p>
+                                <p style='margin: 0 0 8px 0;'><strong>Valor Registrado/Baixado:</strong> " . format_currency($pay_amount) . "</p>
                                 " . (!empty($voucher_code) ? "<p style='margin: 0 0 8px 0;'><strong>Observação:</strong> " . htmlspecialchars($voucher_code) . "</p>" : "") . "
                                 <p style='margin: 0;'><strong>Total Já Pago neste Item:</strong> " . format_currency($new_paid_amount) . " (de " . format_currency($mbData['amount']) . ")</p>
                             </div>
@@ -884,13 +902,13 @@ require_once __DIR__ . '/layout_header.php';
             <h3 class="text-base font-bold font-outfit text-slate-900 dark:text-white flex items-center gap-2">
                 <span>💰</span> Registrar Pagamento Manual / Baixa
             </h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Use o saldo disponível do membro ou registre uma cortesia/voucher.</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Realize baixas manuais diretas, transporte de registros antigos ou deduções de saldo.</p>
         </div>
         
         <form action="billing.php?tab=singers<?= !empty($_SERVER['QUERY_STRING']) ? '&' . htmlspecialchars(preg_replace('/^\?/', '', $_SERVER['QUERY_STRING'])) : '' ?>" method="POST" class="space-y-4">
             <input type="hidden" name="action" value="manual_payment">
             <input type="hidden" name="member_billing_id" id="modal_mb_id">
-            <input type="hidden" name="payment_source" id="payment_source_hidden" value="balance">
+            <input type="hidden" name="payment_source" id="payment_source_hidden" value="manual">
             
             <!-- Detalhes da Cobrança -->
             <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl space-y-2 border border-slate-100 dark:border-slate-800 text-xs">
@@ -914,44 +932,69 @@ require_once __DIR__ . '/layout_header.php';
                 </div>
             </div>
             
-            <!-- Toggle Voucher / Cortesia -->
-            <label id="voucher_toggle_label" for="voucher_toggle" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 hover:border-amber-400 hover:bg-amber-50/40 dark:hover:bg-amber-900/10 transition-all group">
-                <div class="mt-0.5 flex-shrink-0">
-                    <input type="checkbox" id="voucher_toggle" class="sr-only peer" onchange="toggleVoucherMode(this.checked)">
-                    <div class="w-5 h-5 rounded-md border-2 border-slate-300 dark:border-slate-600 peer-checked:bg-amber-500 peer-checked:border-amber-500 flex items-center justify-center transition-all" id="voucher_checkbox_visual">
-                        <svg class="w-3 h-3 text-white hidden" id="voucher_check_icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                        </svg>
-                    </div>
+            <!-- Seleção da Origem da Baixa -->
+            <div class="space-y-2">
+                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Selecione o Tipo de Baixa *</label>
+                
+                <div class="space-y-2">
+                    <!-- Opção 1: Registro Manual (Default) -->
+                    <label id="opt_manual_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-coral-500 bg-coral-50/40 dark:bg-coral-950/20 transition-all group">
+                        <input type="radio" name="payment_source_radio" value="manual" checked onchange="setPaymentSource('manual')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
+                        <div>
+                            <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>📝</span> Registro Manual / Baixa Direta
+                                <span class="px-1.5 py-0.5 text-[9px] rounded bg-coral-100 dark:bg-coral-900/40 text-coral-700 dark:text-coral-300 font-semibold">Sem Exigência de Saldo</span>
+                            </p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Para recebimentos diretos, transporte de registros antigos ou quando não houver comprovante anexo.</p>
+                        </div>
+                    </label>
+                    
+                    <!-- Opção 2: Abater do Saldo em Conta -->
+                    <label id="opt_balance_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group">
+                        <input type="radio" name="payment_source_radio" value="balance" onchange="setPaymentSource('balance')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
+                        <div>
+                            <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>💳</span> Abater do Saldo em Conta do Cantor
+                            </p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Desconta o valor do saldo disponível no portal. (Saldo atual: <strong id="opt_balance_display_val">R$ 0,00</strong>)</p>
+                        </div>
+                    </label>
+                    
+                    <!-- Opção 3: Voucher / Cortesia -->
+                    <label id="opt_voucher_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group">
+                        <input type="radio" name="payment_source_radio" value="voucher" onchange="setPaymentSource('voucher')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
+                        <div>
+                            <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>🎫</span> Voucher / Cortesia / Isenção
+                            </p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Baixa registrada como desconto ou cortesia concedida ao cantor (não altera o saldo).</p>
+                        </div>
+                    </label>
                 </div>
-                <div>
-                    <p class="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">🎫 Pagar com Voucher / Cortesia</p>
-                    <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">O saldo do membro não será descontado. O valor será registrado como cortesia.</p>
-                </div>
-            </label>
+            </div>
             
-            <!-- Campo de Observações do Voucher (opcional) -->
-            <div id="voucher_obs_container" class="hidden transition-all">
-                <label for="voucher_code" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Observações <span class="text-slate-400 font-normal">(opcional)</span></label>
+            <!-- Campo de Observações (opcional) -->
+            <div id="voucher_obs_container" class="transition-all">
+                <label for="voucher_code" id="voucher_obs_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Observação / Histórico do Lançamento <span class="text-slate-400 font-normal">(opcional)</span></label>
                 <textarea name="voucher_code" id="voucher_code" rows="2"
-                          class="w-full px-3.5 py-2 text-sm bg-amber-50 dark:bg-slate-900 border border-amber-200 dark:border-amber-700/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 dark:text-white transition-all resize-none"
-                          placeholder="Ex: Cortesia para cantor destaque, código VOUCHER2024..."></textarea>
-                <span class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Deixe em branco se não quiser registrar observações.</span>
+                          class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all resize-none"
+                          placeholder="Ex: Transporte de registro antigo do sistema anterior, recebido em mãos no ensaio..."></textarea>
+                <span class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Deixe em branco se não quiser registrar observações adicionais.</span>
             </div>
             
             <!-- Input de Valor -->
             <div>
                 <div class="flex justify-between items-center mb-1">
-                    <label for="pay_amount" id="pay_amount_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Valor a Deduzir (R$)</label>
+                    <label for="pay_amount" id="pay_amount_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Valor a Baixar (R$)</label>
                     <button type="button" onclick="useMaxPayAmount()" id="btn_use_all_balance" class="text-xs text-coral-500 hover:text-coral-600 font-bold focus:outline-none transition-colors">
-                        Usar todo o saldo
+                        Preencher valor restante
                     </button>
                 </div>
                 <input type="text" inputmode="numeric" name="pay_amount" id="pay_amount" required
                        data-currency-mask
                        class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
                        placeholder="0,00">
-                <span id="pay_amount_desc" class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Este valor será deduzido do saldo e adicionado à cobrança.</span>
+                <span id="pay_amount_desc" class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Este valor será registrado como pago na cobrança (transporte de dados / sem exigência de saldo).</span>
             </div>
             
             <!-- Botões -->
@@ -962,7 +1005,7 @@ require_once __DIR__ . '/layout_header.php';
                 </button>
                 <button type="submit" id="modal_submit_btn"
                         class="px-4 py-2.5 rounded-lg bg-coral-500 hover:bg-coral-600 text-white font-semibold text-xs shadow-md transition-colors">
-                    Confirmar Pagamento
+                    Confirmar Baixa
                 </button>
             </div>
         </form>
@@ -971,7 +1014,6 @@ require_once __DIR__ . '/layout_header.php';
 
 <script>
 let currentModalData = null;
-let isVoucherMode = false;
 
 function openManualPaymentModal(data) {
     currentModalData = data;
@@ -980,26 +1022,22 @@ function openManualPaymentModal(data) {
     document.getElementById('modal_member_name').innerText = data.member_name;
     document.getElementById('modal_billing_title').innerText = data.title;
     document.getElementById('modal_member_balance').innerText = 'R$ ' + data.member_balance.toFixed(2).replace('.', ',');
+    const optBalVal = document.getElementById('opt_balance_display_val');
+    if (optBalVal) optBalVal.innerText = 'R$ ' + data.member_balance.toFixed(2).replace('.', ',');
     document.getElementById('modal_remaining_amount').innerText = 'R$ ' + data.remaining_amount.toFixed(2).replace('.', ',');
     
     // Resetar estado
-    document.getElementById('voucher_toggle').checked = false;
     document.getElementById('voucher_code').value = '';
     const payInput = document.getElementById('pay_amount');
     payInput.value = '';
-    // Limpar hidden da máscara se existir
     const payHidden = payInput.parentElement ? payInput.parentElement.querySelector('input[type="hidden"][name="pay_amount"]') : null;
     if (payHidden) payHidden.value = '';
-    isVoucherMode = false;
     
-    // Resetar visual do checkbox
-    document.getElementById('voucher_checkbox_visual').classList.remove('bg-amber-500', 'border-amber-500');
-    document.getElementById('voucher_check_icon').classList.add('hidden');
-    document.getElementById('voucher_obs_container').classList.add('hidden');
-    document.getElementById('payment_source_hidden').value = 'balance';
+    // Selecionar por padrão 'manual' (Registro Manual / Baixa Direta)
+    const radioManual = document.querySelector('input[name="payment_source_radio"][value="manual"]');
+    if (radioManual) radioManual.checked = true;
     
-    // Aplicar estado inicial (balance)
-    _applyBalanceMode();
+    setPaymentSource('manual');
     
     document.getElementById('manual_payment_modal').classList.remove('hidden');
 }
@@ -1008,93 +1046,82 @@ function closeManualPaymentModal() {
     document.getElementById('manual_payment_modal').classList.add('hidden');
 }
 
-function toggleVoucherMode(checked) {
-    isVoucherMode = checked;
+function setPaymentSource(source) {
+    document.getElementById('payment_source_hidden').value = source;
     
-    const visual = document.getElementById('voucher_checkbox_visual');
-    const icon = document.getElementById('voucher_check_icon');
-    const obsContainer = document.getElementById('voucher_obs_container');
-    const toggleLabel = document.getElementById('voucher_toggle_label');
+    const optManual = document.getElementById('opt_manual_label');
+    const optBalance = document.getElementById('opt_balance_label');
+    const optVoucher = document.getElementById('opt_voucher_label');
+    
+    const payAmountLabel = document.getElementById('pay_amount_label');
+    const payAmountDesc = document.getElementById('pay_amount_desc');
+    const btnUseAll = document.getElementById('btn_use_all_balance');
     const submitBtn = document.getElementById('modal_submit_btn');
+    const obsContainer = document.getElementById('voucher_obs_container');
+    const obsLabel = document.getElementById('voucher_obs_label');
     
-    if (checked) {
-        visual.classList.add('bg-amber-500', 'border-amber-500');
-        icon.classList.remove('hidden');
+    const defaultClass = "flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group";
+    if (optManual) optManual.className = defaultClass;
+    if (optBalance) optBalance.className = defaultClass;
+    if (optVoucher) optVoucher.className = defaultClass;
+    
+    if (source === 'manual') {
+        if (optManual) optManual.className = "flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-coral-500 bg-coral-50/40 dark:bg-coral-950/20 transition-all group";
+        payAmountLabel.innerText = 'Valor a Baixar (R$)';
+        payAmountDesc.innerText = 'Este valor será registrado como pago na cobrança (transporte de dados / sem exigência de saldo).';
+        btnUseAll.innerText = 'Preencher valor restante';
+        btnUseAll.classList.remove('opacity-50', 'pointer-events-none', 'text-amber-500', 'hover:text-amber-600', 'text-emerald-600', 'hover:text-emerald-700');
+        btnUseAll.classList.add('text-coral-500', 'hover:text-coral-600');
+        submitBtn.className = "px-4 py-2.5 rounded-lg bg-coral-500 hover:bg-coral-600 text-white font-semibold text-xs shadow-md transition-colors";
         obsContainer.classList.remove('hidden');
-        toggleLabel.classList.add('border-amber-400', 'bg-amber-50/60', 'dark:bg-amber-900/20');
-        toggleLabel.classList.remove('border-dashed');
-        submitBtn.classList.remove('bg-coral-500', 'hover:bg-coral-600');
-        submitBtn.classList.add('bg-amber-500', 'hover:bg-amber-600');
-        document.getElementById('payment_source_hidden').value = 'voucher';
-        _applyVoucherMode();
-    } else {
-        visual.classList.remove('bg-amber-500', 'border-amber-500');
-        icon.classList.add('hidden');
+        if (obsLabel) obsLabel.innerText = 'Observação / Histórico do Lançamento (opcional)';
+    } else if (source === 'balance') {
+        if (optBalance) optBalance.className = "flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 transition-all group";
+        payAmountLabel.innerText = 'Valor a Deduzir do Saldo (R$)';
+        payAmountDesc.innerText = 'Este valor será descontado do saldo disponível do membro no portal.';
+        btnUseAll.innerText = 'Usar saldo disponível';
+        btnUseAll.classList.remove('text-amber-500', 'hover:text-amber-600', 'text-coral-500', 'hover:text-coral-600');
+        btnUseAll.classList.add('text-emerald-600', 'hover:text-emerald-700');
+        submitBtn.className = "px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-md transition-colors";
         obsContainer.classList.add('hidden');
-        toggleLabel.classList.remove('border-amber-400', 'bg-amber-50/60', 'dark:bg-amber-900/20');
-        toggleLabel.classList.add('border-dashed');
-        submitBtn.classList.add('bg-coral-500', 'hover:bg-coral-600');
-        submitBtn.classList.remove('bg-amber-500', 'hover:bg-amber-600');
-        document.getElementById('payment_source_hidden').value = 'balance';
-        _applyBalanceMode();
-    }
-}
-
-function _applyBalanceMode() {
-    const payAmountInput = document.getElementById('pay_amount');
-    const payAmountLabel = document.getElementById('pay_amount_label');
-    const payAmountDesc = document.getElementById('pay_amount_desc');
-    const btnUseAll = document.getElementById('btn_use_all_balance');
-    
-    payAmountLabel.innerText = 'Valor a Deduzir (R$)';
-    payAmountDesc.innerText = 'Este valor será deduzido do saldo do membro e adicionado à cobrança.';
-    btnUseAll.innerText = 'Usar todo o saldo';
-    btnUseAll.classList.remove('text-amber-500', 'hover:text-amber-600');
-    btnUseAll.classList.add('text-coral-500', 'hover:text-coral-600');
-    
-    if (currentModalData) {
-        const maxVal = Math.min(currentModalData.member_balance, currentModalData.remaining_amount);
-        payAmountInput.max = maxVal.toFixed(2);
-        if (currentModalData.member_balance <= 0) {
-            btnUseAll.classList.add('opacity-50', 'pointer-events-none');
-        } else {
-            btnUseAll.classList.remove('opacity-50', 'pointer-events-none');
+        if (currentModalData) {
+            if (currentModalData.member_balance <= 0) {
+                btnUseAll.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                btnUseAll.classList.remove('opacity-50', 'pointer-events-none');
+            }
         }
-    }
-}
-
-function _applyVoucherMode() {
-    const payAmountInput = document.getElementById('pay_amount');
-    const payAmountLabel = document.getElementById('pay_amount_label');
-    const payAmountDesc = document.getElementById('pay_amount_desc');
-    const btnUseAll = document.getElementById('btn_use_all_balance');
-    
-    payAmountLabel.innerText = 'Valor a Pagar via Voucher (R$)';
-    payAmountDesc.innerText = 'Não deduz saldo. Registrado como cortesia no histórico do cantor.';
-    btnUseAll.innerText = 'Pagar valor restante';
-    btnUseAll.classList.remove('opacity-50', 'pointer-events-none', 'text-coral-500', 'hover:text-coral-600');
-    btnUseAll.classList.add('text-amber-500', 'hover:text-amber-600');
-    
-    if (currentModalData) {
-        payAmountInput.max = currentModalData.remaining_amount.toFixed(2);
+    } else if (source === 'voucher') {
+        if (optVoucher) optVoucher.className = "flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-amber-500 bg-amber-50/40 dark:bg-amber-950/20 transition-all group";
+        payAmountLabel.innerText = 'Valor a Isentar via Voucher (R$)';
+        payAmountDesc.innerText = 'Não deduz saldo. Registrado como cortesia/voucher no histórico do cantor.';
+        btnUseAll.innerText = 'Isentar valor restante';
+        btnUseAll.classList.remove('opacity-50', 'pointer-events-none', 'text-coral-500', 'hover:text-coral-600', 'text-emerald-600', 'hover:text-emerald-700');
+        btnUseAll.classList.add('text-amber-500', 'hover:text-amber-600');
+        submitBtn.className = "px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-md transition-colors";
+        obsContainer.classList.remove('hidden');
+        if (obsLabel) obsLabel.innerText = 'Observação do Voucher / Cortesia (opcional)';
     }
 }
 
 function useMaxPayAmount() {
     if (!currentModalData) return;
+    const source = document.getElementById('payment_source_hidden').value;
     let val;
-    if (isVoucherMode) {
-        val = currentModalData.remaining_amount;
-    } else {
+    if (source === 'balance') {
         val = Math.min(currentModalData.member_balance, currentModalData.remaining_amount);
+    } else { // 'manual' or 'voucher'
+        val = currentModalData.remaining_amount;
     }
-    // Formata para o campo mascarado (BRL)
-    const formatted = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const payInput = document.getElementById('pay_amount');
-    payInput.value = formatted;
-    // Atualiza o hidden criado pela máscara
-    const hiddenInput = payInput.parentElement.querySelector('input[type="hidden"][name="pay_amount"]');
-    if (hiddenInput) hiddenInput.value = val.toFixed(2);
+    if (window.ecoralCurrencyMask && window.ecoralCurrencyMask.setValue) {
+        window.ecoralCurrencyMask.setValue('#pay_amount', val);
+    } else {
+        const formatted = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const payInput = document.getElementById('pay_amount');
+        payInput.value = formatted;
+        const hiddenInput = payInput.parentElement ? payInput.parentElement.querySelector('input[type="hidden"][name="pay_amount"]') : null;
+        if (hiddenInput) hiddenInput.value = val.toFixed(2);
+    }
 }
 </script>
 
@@ -1226,6 +1253,12 @@ function openHistoryModal(billingId) {
                         icon = '🔄';
                         title = 'Baixa Manual com Saldo';
                         desc = `Abatimento de <strong>${p.formatted_amount}</strong> debitado do saldo da conta do cantor. Realizado por administrador/financeiro.`;
+                    } else if (p.filename === 'manual_record') {
+                        icon = '📝';
+                        title = 'Registro / Baixa Manual';
+                        const obsMatch = p.description ? p.description.match(/Observação: (.+)$/) : null;
+                        const obsText = obsMatch ? ` Observação: <em>"${obsMatch[1]}"</em>` : '';
+                        desc = `Baixa de <strong>${p.formatted_amount}</strong> registrada manualmente por administrador/financeiro (transporte de dados / sem exigência de saldo).${obsText}`;
                     } else if (p.filename === 'voucher_deduction') {
                         icon = '🎫';
                         title = 'Pagamento via Voucher / Cortesia';
