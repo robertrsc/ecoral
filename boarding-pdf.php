@@ -82,8 +82,19 @@ if (empty($members)) {
 $choirName = $members[0]['choir_name'] ?? 'eCoral';
 $choirLogo = $members[0]['choir_logo'] ?? null;
 
-// Incluir a biblioteca FPDF
-require_once __DIR__ . '/vendor/fpdf/fpdf.php';
+// Incluir a biblioteca FPDF com suporte a pasta lib/ (rastreada no git) ou vendor/
+if (file_exists(__DIR__ . '/lib/fpdf.php')) {
+    require_once __DIR__ . '/lib/fpdf.php';
+} elseif (file_exists(__DIR__ . '/vendor/fpdf/fpdf.php')) {
+    require_once __DIR__ . '/vendor/fpdf/fpdf.php';
+} elseif (file_exists(__DIR__ . '/fpdf.php')) {
+    require_once __DIR__ . '/fpdf.php';
+} elseif (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require_once __DIR__ . '/vendor/autoload.php';
+} else {
+    while (ob_get_level() > 0) ob_end_clean();
+    die("<div style='font-family:sans-serif;padding:20px;color:#721c24;background:#f8d7da;border-radius:8px;'><h2>Erro de Instalação no Servidor</h2><p>A biblioteca FPDF não foi encontrada no servidor de hospedagem. Certifique-se de que a pasta <strong>lib</strong> ou <strong>vendor</strong> foi enviada.</p><p><a href='members.php'>Voltar para a Lista de Membros</a></p></div>");
+}
 
 // Função auxiliar estática de conversão de string ISO-8859-1 com fallback cPanel
 function safePdfStr($str) {

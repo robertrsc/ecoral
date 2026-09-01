@@ -748,9 +748,18 @@ if ($action === 'edit' && $edit_id > 0) {
 // Listar membros (cantores) com busca e paginação
 $members = [];
 $total_records = 0;
-$limit = 15;
-$page = max(1, intval($_GET['page'] ?? 1));
-$offset = ($page - 1) * $limit;
+$limit_param = $_GET['limit'] ?? '15';
+$show_all = ($limit_param === 'all' || $limit_param === '0' || $limit_param === '9999');
+
+if ($show_all) {
+    $limit = 999999;
+    $page = 1;
+    $offset = 0;
+} else {
+    $limit = max(1, intval($limit_param));
+    $page = max(1, intval($_GET['page'] ?? 1));
+    $offset = ($page - 1) * $limit;
+}
 $search = trim($_GET['search'] ?? '');
 
 if ($action === 'list') {
@@ -811,6 +820,19 @@ require_once __DIR__ . '/layout_header.php';
     
     <?php if ($action === 'list'): ?>
         <div class="flex items-center gap-2 flex-wrap justify-end">
+            <?php if ($show_all): ?>
+                <a href="members.php?limit=15<?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                   class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-white font-semibold rounded-lg text-xs transition-all flex items-center gap-1.5"
+                   title="Voltar para exibição paginada (15 por página)">
+                    <span>📄</span> <span>Paginar (15 p/ pág.)</span>
+                </a>
+            <?php else: ?>
+                <a href="members.php?limit=all<?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                   class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5"
+                   title="Exibir todos os cantores em uma única lista sem paginação (para embarque)">
+                    <span>👁️</span> <span>Ver Todos (Sem Paginação)</span>
+                </a>
+            <?php endif; ?>
             <button type="button" onclick="submitBoardingForm()" 
                     class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg text-xs shadow-sm transition-all flex items-center gap-1.5"
                     title="Emitir Lista de Embarque em PDF dos cantores assinalados">
@@ -1051,7 +1073,16 @@ require_once __DIR__ . '/layout_header.php';
             </div>
             
             <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <?php if (!empty($search)): ?>
+                <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    <label for="limit_select" class="font-semibold whitespace-nowrap">Exibir:</label>
+                    <select name="limit" id="limit_select" onchange="this.form.submit()" class="px-2.5 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none dark:text-white cursor-pointer font-semibold">
+                        <option value="15" <?= $limit_param == '15' ? 'selected' : '' ?>>15 por página</option>
+                        <option value="50" <?= $limit_param == '50' ? 'selected' : '' ?>>50 por página</option>
+                        <option value="100" <?= $limit_param == '100' ? 'selected' : '' ?>>100 por página</option>
+                        <option value="all" <?= $show_all ? 'selected' : '' ?>>Todos (Sem Paginação)</option>
+                    </select>
+                </div>
+                <?php if (!empty($search) || $show_all): ?>
                     <a href="members.php" 
                        class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-white font-semibold text-xs rounded-lg transition-colors">
                         Limpar
@@ -1169,9 +1200,20 @@ require_once __DIR__ . '/layout_header.php';
     </form>
             
             <!-- Paginação -->
-            <?php
-            $total_pages = ceil($total_records / $limit);
-            if ($total_pages > 1):
+            <?php if ($show_all): ?>
+                <div class="px-6 py-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-700/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+                    <div class="text-slate-500 dark:text-slate-400 text-center sm:text-left font-semibold">
+                        Exibindo <span class="font-bold text-slate-700 dark:text-slate-300"><?= count($members) ?></span> cantores na mesma tela (sem paginação).
+                    </div>
+                    <div>
+                        <a href="members.php?limit=15<?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" class="text-coral-500 hover:text-coral-600 font-bold">
+                            Reativar Paginação (15 por pág.)
+                        </a>
+                    </div>
+                </div>
+            <?php else:
+                $total_pages = ceil($total_records / $limit);
+                if ($total_pages > 1):
             ?>
                 <div class="px-6 py-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-700/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
                     <div class="text-slate-500 dark:text-slate-400 text-center sm:text-left">
@@ -1183,7 +1225,7 @@ require_once __DIR__ . '/layout_header.php';
                     <div class="flex items-center gap-1.5 flex-wrap justify-center">
                         <!-- Botão Anterior -->
                         <?php if ($page > 1): ?>
-                            <a href="members.php?page=<?= $page - 1 ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                            <a href="members.php?page=<?= $page - 1 ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?><?= $limit_param != '15' ? '&limit=' . urlencode($limit_param) : '' ?>" 
                                class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-all text-slate-600 dark:text-slate-300">
                                 Anterior
                             </a>
@@ -1204,7 +1246,7 @@ require_once __DIR__ . '/layout_header.php';
                                         <?= $i ?>
                                     </span>
                         <?php   else: ?>
-                                    <a href="members.php?page=<?= $i ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                                    <a href="members.php?page=<?= $i ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?><?= $limit_param != '15' ? '&limit=' . urlencode($limit_param) : '' ?>" 
                                        class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold transition-all">
                                         <?= $i ?>
                                     </a>
@@ -1220,7 +1262,7 @@ require_once __DIR__ . '/layout_header.php';
                         
                         <!-- Botão Próximo -->
                         <?php if ($page < $total_pages): ?>
-                            <a href="members.php?page=<?= $page + 1 ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" 
+                            <a href="members.php?page=<?= $page + 1 ?><?= !empty($search) ? '&search=' . urlencode($search) : '' ?><?= $limit_param != '15' ? '&limit=' . urlencode($limit_param) : '' ?>" 
                                class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-all text-slate-600 dark:text-slate-300">
                                 Próxima
                             </a>
@@ -1231,6 +1273,7 @@ require_once __DIR__ . '/layout_header.php';
                         <?php endif; ?>
                     </div>
                 </div>
+            <?php endif; ?>
             <?php endif; ?>
     </div>
 <?php endif; ?>
