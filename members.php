@@ -1475,7 +1475,9 @@ function submitBoardingForm() {
         alert('Por favor, assinale pelo menos um membro na lista abaixo para gerar a Lista de Embarque em PDF.');
         return;
     }
-    document.getElementById('boarding_form').submit();
+    const ids = Array.from(checked).map(cb => cb.value);
+    const url = 'boarding-pdf.php?ids=' + ids.join(',');
+    window.open(url, '_blank');
 }
 </script>
 
