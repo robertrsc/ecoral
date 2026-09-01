@@ -307,6 +307,124 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Tratar reversão / estorno de baixa manual
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'revert_manual_payment') {
+    $receipt_id = intval($_POST['receipt_id'] ?? 0);
+    
+    if (!is_admin_user()) {
+        set_flash_message('error', 'Operação permitida apenas para administradores/financeiros.');
+    } elseif ($receipt_id <= 0) {
+        set_flash_message('error', 'Parâmetros inválidos para estorno da baixa.');
+    } else {
+        try {
+            $pdo->beginTransaction();
+            
+            // Buscar dados do recibo, cobrança e membro garantindo acesso do coral (ou bypass superadmin)
+            $stmtRec = $pdo->prepare("
+                SELECT r.*, rbi.member_billing_id, mb.paid_amount as mb_paid_amount, mb.amount as mb_total_amount, 
+                       mb.due_date as mb_due_date, bi.title as billing_title, bi.type as billing_type,
+                       u.id as member_id, u.name as member_name, u.email as member_email, u.balance as member_balance, 
+                       u.choir_id as member_choir_id
+                FROM receipts r
+                JOIN receipt_billing_items rbi ON rbi.receipt_id = r.id
+                JOIN member_billing mb ON rbi.member_billing_id = mb.id
+                JOIN billing_items bi ON mb.billing_item_id = bi.id
+                JOIN users u ON r.member_id = u.id
+                WHERE r.id = ? AND (u.choir_id = ? OR ?)
+            ");
+            $stmtRec->execute([$receipt_id, $choir_id, is_superadmin() ? 1 : 0]);
+            $recData = $stmtRec->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$recData) {
+                throw new Exception('Registro de baixa não encontrado ou acesso negado.');
+            }
+            
+            $pay_amount = floatval($recData['amount']);
+            $mb_id = intval($recData['member_billing_id']);
+            $member_id = intval($recData['member_id']);
+            $filename = $recData['filename'];
+            
+            // 1. Se foi baixa com saldo em conta, devolver valor ao saldo do cantor
+            $new_balance = floatval($recData['member_balance']);
+            if ($filename === 'balance_deduction') {
+                $new_balance = floatval($recData['member_balance']) + $pay_amount;
+                $stmtUpdateBal = $pdo->prepare("UPDATE users SET balance = ? WHERE id = ?");
+                $stmtUpdateBal->execute([$new_balance, $member_id]);
+            }
+            
+            // 2. Subtrair valor pago da cobrança do membro e retornar status para 'open'
+            $new_paid_amount = max(0.00, floatval($recData['mb_paid_amount']) - $pay_amount);
+            $stmtUpdateMB = $pdo->prepare("UPDATE member_billing SET paid_amount = ?, status = 'open', paid_at = NULL WHERE id = ?");
+            $stmtUpdateMB->execute([$new_paid_amount, $mb_id]);
+            
+            // 3. Remover vínculo e o registro do comprovante
+            $stmtDelLink = $pdo->prepare("DELETE FROM receipt_billing_items WHERE receipt_id = ?");
+            $stmtDelLink->execute([$receipt_id]);
+            
+            $stmtDelRec = $pdo->prepare("DELETE FROM receipts WHERE id = ?");
+            $stmtDelRec->execute([$receipt_id]);
+            
+            $pdo->commit();
+            
+            // 4. Enviar e-mail notificando o cantor sobre a reversão da baixa manual
+            try {
+                $stmtChoirInfo = $pdo->prepare("SELECT name, logo FROM choirs WHERE id = ?");
+                $stmtChoirInfo->execute([$recData['member_choir_id']]);
+                $choirObj = $stmtChoirInfo->fetch();
+                $choirNameEmail = $choirObj ? $choirObj['name'] : 'eCoral';
+                
+                $logoEmailHtml = "";
+                if ($choirObj && !empty($choirObj['logo'])) {
+                    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                    $logoUrl = $protocol . "://" . $host . "/www/ecoral/uploads/" . $choirObj['logo'];
+                    $logoEmailHtml = "<div style='text-align: center; margin-bottom: 20px;'><img src='" . htmlspecialchars($logoUrl) . "' style='max-height: 80px; object-fit: contain; background-color: #ffffff; padding: 4px; border-radius: 8px;' alt='Logo " . htmlspecialchars($choirNameEmail) . "'></div>";
+                }
+                
+                $billingTitleFormatted = $recData['billing_title'];
+                if ($recData['billing_type'] === 'recurring') {
+                    $billingTitleFormatted .= ' - ' . date('m/Y', strtotime($recData['mb_due_date']));
+                }
+                
+                $subject = "Notificação: Baixa Manual Desfeita - " . $billingTitleFormatted;
+                $balanceNotice = ($filename === 'balance_deduction') 
+                    ? "<p style='margin: 0 0 8px 0;'><strong>Valor Estornado para Seu Saldo:</strong> " . format_currency($pay_amount) . " (Novo Saldo: " . format_currency($new_balance) . ")</p>"
+                    : "";
+                    
+                $body = "
+                    <div style='font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #f1f5f9; padding: 24px; border-radius: 12px; background-color: #ffffff;'>
+                        " . $logoEmailHtml . "
+                        <h2 style='color: #f43f5e; margin-top: 0;'>Olá, " . htmlspecialchars($recData['member_name']) . "!</h2>
+                        <p>Informamos que um lançamento de <strong>baixa manual efetuado anteriormente em sua cobrança foi desfeito/estornado</strong> pela administração do coral.</p>
+                        
+                        <div style='background-color: #fff1f2; border-left: 4px solid #f43f5e; padding: 16px; margin: 20px 0; border-radius: 4px;'>
+                            <p style='margin: 0 0 8px 0;'><strong>Cobrança:</strong> " . htmlspecialchars($billingTitleFormatted) . "</p>
+                            <p style='margin: 0 0 8px 0;'><strong>Valor da Baixa Estornada:</strong> " . format_currency($pay_amount) . "</p>
+                            " . $balanceNotice . "
+                            <p style='margin: 0;'><strong>Status Atual da Cobrança:</strong> Em Aberto (Total Pago: " . format_currency($new_paid_amount) . " de " . format_currency($recData['mb_total_amount']) . ")</p>
+                        </div>
+                        
+                        <p style='margin-top: 32px; font-size: 12px; color: #94a3b8;'>Atenciosamente,<br>Equipe " . htmlspecialchars($choirNameEmail) . "</p>
+                    </div>
+                ";
+                send_email($recData['member_email'], $recData['member_name'], $subject, $body);
+            } catch (Exception $mailEx) {
+                error_log("Failed to send revert manual payment email: " . $mailEx->getMessage());
+            }
+            
+            set_flash_message('success', 'Baixa manual desfeita com sucesso! A cobrança retornou para em aberto e os valores foram estornados.');
+            $view_type_filter = $_GET['view_type'] ?? '';
+            $member_id_filter = intval($_GET['member_id'] ?? 0);
+            $search_filter = trim($_GET['search'] ?? '');
+            header("Location: billing.php?tab=singers&view_type=" . urlencode($view_type_filter) . "&member_id=" . $member_id_filter . "&search=" . urlencode($search_filter));
+            exit;
+        } catch (Exception $ex) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            set_flash_message('error', $ex->getMessage());
+        }
+    }
+}
+
 // Excluir Cobrança Pai (E todas as vinculadas de membros)
 if ($action === 'delete') {
     $delete_id = intval($_GET['id'] ?? 0);
@@ -1292,7 +1410,19 @@ function openHistoryModal(billingId) {
                         }
                     }
                     
-                    timelineHtml += createTimelineItem(icon, title, desc, p.formatted_created_at);
+                    const actionHtml = p.can_revert ? `
+                        <div class="mt-2 text-right">
+                            <form action="billing.php" method="POST" class="inline" onsubmit="return confirm('Deseja realmente desfazer esta baixa manual? O valor de ${p.formatted_amount} será estornado.');">
+                                <input type="hidden" name="action" value="revert_manual_payment">
+                                <input type="hidden" name="receipt_id" value="${p.id}">
+                                <button type="submit" class="px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-lg border border-rose-200 dark:border-rose-800 transition-colors inline-flex items-center gap-1">
+                                    <span>↩️</span> Desfazer Baixa
+                                </button>
+                            </form>
+                        </div>
+                    ` : '';
+                    
+                    timelineHtml += createTimelineItem(icon, title, desc, p.formatted_created_at, actionHtml);
                 });
             }
             
@@ -1323,7 +1453,7 @@ function closeHistoryModal() {
     document.getElementById('modal-billing-history').classList.add('hidden');
 }
 
-function createTimelineItem(icon, title, desc, dateStr) {
+function createTimelineItem(icon, title, desc, dateStr, actionHtml = '') {
     return `
         <div class="relative pl-7 pb-2">
             <!-- Ponto marcador -->
@@ -1337,6 +1467,7 @@ function createTimelineItem(icon, title, desc, dateStr) {
                     <span class="text-[10px] text-slate-400">${dateStr}</span>
                 </div>
                 <p class="text-slate-600 dark:text-slate-400 font-normal leading-relaxed">${desc}</p>
+                ${actionHtml}
             </div>
         </div>
     `;

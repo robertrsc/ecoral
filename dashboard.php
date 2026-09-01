@@ -76,12 +76,14 @@ if (isset($_GET['ajax_action']) && $_GET['ajax_action'] === 'get_billing_history
             $billing['title'] = $billing['title'] . ' - ' . date('m/Y', strtotime($billing['due_date']));
         }
         
+        $isAdmin = is_admin_user();
         foreach ($payments as &$p) {
             $p['formatted_amount'] = format_currency($p['amount']);
             $p['formatted_created_at'] = date('d/m/Y H:i', strtotime($p['created_at']));
             if (!empty($p['approved_at'])) {
                 $p['formatted_approved_at'] = date('d/m/Y H:i', strtotime($p['approved_at']));
             }
+            $p['can_revert'] = $isAdmin && in_array($p['filename'], ['balance_deduction', 'voucher_deduction', 'manual_record']);
         }
         unset($p);
         
@@ -810,7 +812,19 @@ function openHistoryModal(billingId) {
                         }
                     }
                     
-                    timelineHtml += createTimelineItem(icon, title, desc, p.formatted_created_at);
+                    const actionHtml = p.can_revert ? `
+                        <div class="mt-2 text-right">
+                            <form action="billing.php" method="POST" class="inline" onsubmit="return confirm('Deseja realmente desfazer esta baixa manual? O valor de ${p.formatted_amount} será estornado.');">
+                                <input type="hidden" name="action" value="revert_manual_payment">
+                                <input type="hidden" name="receipt_id" value="${p.id}">
+                                <button type="submit" class="px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-lg border border-rose-200 dark:border-rose-800 transition-colors inline-flex items-center gap-1">
+                                    <span>↩️</span> Desfazer Baixa
+                                </button>
+                            </form>
+                        </div>
+                    ` : '';
+                    
+                    timelineHtml += createTimelineItem(icon, title, desc, p.formatted_created_at, actionHtml);
                 });
             }
             
@@ -841,7 +855,7 @@ function closeHistoryModal() {
     document.getElementById('modal-billing-history').classList.add('hidden');
 }
 
-function createTimelineItem(icon, title, desc, dateStr) {
+function createTimelineItem(icon, title, desc, dateStr, actionHtml = '') {
     return `
         <div class="relative pl-7 pb-2">
             <!-- Ponto marcador -->
@@ -855,6 +869,7 @@ function createTimelineItem(icon, title, desc, dateStr) {
                     <span class="text-[10px] text-slate-400">${dateStr}</span>
                 </div>
                 <p class="text-slate-600 dark:text-slate-400 font-normal leading-relaxed">${desc}</p>
+                ${actionHtml}
             </div>
         </div>
     `;
