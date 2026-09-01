@@ -884,121 +884,123 @@ require_once __DIR__ . '/layout_header.php';
 <?php endif; ?>
 
 <!-- Modal de Pagamento Manual com Saldo (Fancy Box/Glassmorphic Style) -->
-<div id="manual_payment_modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+<div id="manual_payment_modal" class="fixed inset-0 z-50 hidden overflow-y-auto p-4 flex items-center justify-center min-h-screen">
     <!-- Backdrop com Blur -->
     <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onclick="closeManualPaymentModal()"></div>
     
     <!-- Modal Card -->
-    <div class="relative bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full border border-slate-100 dark:border-slate-700/50 p-6 md:p-8 transform transition-all overflow-hidden">
+    <div class="relative bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full border border-slate-100 dark:border-slate-700/50 p-6 md:p-8 transform transition-all max-h-[90vh] flex flex-col my-auto z-10 overflow-hidden">
         <!-- Close Button -->
-        <button onclick="closeManualPaymentModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none">
+        <button onclick="closeManualPaymentModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none z-20">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
         </button>
         
         <!-- Header -->
-        <div class="mb-5">
+        <div class="mb-4 flex-shrink-0 pr-6">
             <h3 class="text-base font-bold font-outfit text-slate-900 dark:text-white flex items-center gap-2">
                 <span>💰</span> Registrar Pagamento Manual / Baixa
             </h3>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Realize baixas manuais diretas, transporte de registros antigos ou deduções de saldo.</p>
         </div>
         
-        <form action="billing.php?tab=singers<?= !empty($_SERVER['QUERY_STRING']) ? '&' . htmlspecialchars(preg_replace('/^\?/', '', $_SERVER['QUERY_STRING'])) : '' ?>" method="POST" class="space-y-4">
+        <form action="billing.php?tab=singers<?= !empty($_SERVER['QUERY_STRING']) ? '&' . htmlspecialchars(preg_replace('/^\?/', '', $_SERVER['QUERY_STRING'])) : '' ?>" method="POST" class="flex flex-col flex-1 min-h-0 overflow-hidden">
             <input type="hidden" name="action" value="manual_payment">
             <input type="hidden" name="member_billing_id" id="modal_mb_id">
             <input type="hidden" name="payment_source" id="payment_source_hidden" value="manual">
             
-            <!-- Detalhes da Cobrança -->
-            <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl space-y-2 border border-slate-100 dark:border-slate-800 text-xs">
-                <div>
-                    <span class="text-slate-400">Cantor:</span>
-                    <span class="font-semibold text-slate-800 dark:text-white ml-1" id="modal_member_name"></span>
-                </div>
-                <div>
-                    <span class="text-slate-400">Cobrança:</span>
-                    <span class="font-semibold text-slate-800 dark:text-white ml-1" id="modal_billing_title"></span>
-                </div>
-                <div class="flex justify-between border-t border-slate-200 dark:border-slate-700/60 pt-2 mt-2">
+            <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-4">
+                <!-- Detalhes da Cobrança -->
+                <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl space-y-2 border border-slate-100 dark:border-slate-800 text-xs">
                     <div>
-                        <span class="text-slate-400">Saldo Disponível:</span>
-                        <span class="font-bold text-emerald-600 dark:text-emerald-400 block text-sm" id="modal_member_balance">R$ 0,00</span>
+                        <span class="text-slate-400">Cantor:</span>
+                        <span class="font-semibold text-slate-800 dark:text-white ml-1" id="modal_member_name"></span>
                     </div>
-                    <div class="text-right">
-                        <span class="text-slate-400">Valor Restante:</span>
-                        <span class="font-bold text-rose-500 dark:text-rose-400 block text-sm" id="modal_remaining_amount">R$ 0,00</span>
+                    <div>
+                        <span class="text-slate-400">Cobrança:</span>
+                        <span class="font-semibold text-slate-800 dark:text-white ml-1" id="modal_billing_title"></span>
+                    </div>
+                    <div class="flex justify-between border-t border-slate-200 dark:border-slate-700/60 pt-2 mt-2">
+                        <div>
+                            <span class="text-slate-400">Saldo Disponível:</span>
+                            <span class="font-bold text-emerald-600 dark:text-emerald-400 block text-sm" id="modal_member_balance">R$ 0,00</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-slate-400">Valor Restante:</span>
+                            <span class="font-bold text-rose-500 dark:text-rose-400 block text-sm" id="modal_remaining_amount">R$ 0,00</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Seleção da Origem da Baixa -->
-            <div class="space-y-2">
-                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Selecione o Tipo de Baixa *</label>
                 
+                <!-- Seleção da Origem da Baixa -->
                 <div class="space-y-2">
-                    <!-- Opção 1: Registro Manual (Default) -->
-                    <label id="opt_manual_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-coral-500 bg-coral-50/40 dark:bg-coral-950/20 transition-all group">
-                        <input type="radio" name="payment_source_radio" value="manual" checked onchange="setPaymentSource('manual')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
-                        <div>
-                            <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                                <span>📝</span> Registro Manual / Baixa Direta
-                                <span class="px-1.5 py-0.5 text-[9px] rounded bg-coral-100 dark:bg-coral-900/40 text-coral-700 dark:text-coral-300 font-semibold">Sem Exigência de Saldo</span>
-                            </p>
-                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Para recebimentos diretos, transporte de registros antigos ou quando não houver comprovante anexo.</p>
-                        </div>
-                    </label>
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Selecione o Tipo de Baixa *</label>
                     
-                    <!-- Opção 2: Abater do Saldo em Conta -->
-                    <label id="opt_balance_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group">
-                        <input type="radio" name="payment_source_radio" value="balance" onchange="setPaymentSource('balance')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
-                        <div>
-                            <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                                <span>💳</span> Abater do Saldo em Conta do Cantor
-                            </p>
-                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Desconta o valor do saldo disponível no portal. (Saldo atual: <strong id="opt_balance_display_val">R$ 0,00</strong>)</p>
-                        </div>
-                    </label>
-                    
-                    <!-- Opção 3: Voucher / Cortesia -->
-                    <label id="opt_voucher_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group">
-                        <input type="radio" name="payment_source_radio" value="voucher" onchange="setPaymentSource('voucher')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
-                        <div>
-                            <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                                <span>🎫</span> Voucher / Cortesia / Isenção
-                            </p>
-                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Baixa registrada como desconto ou cortesia concedida ao cantor (não altera o saldo).</p>
-                        </div>
-                    </label>
+                    <div class="space-y-2">
+                        <!-- Opção 1: Registro Manual (Default) -->
+                        <label id="opt_manual_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-coral-500 bg-coral-50/40 dark:bg-coral-950/20 transition-all group">
+                            <input type="radio" name="payment_source_radio" value="manual" checked onchange="setPaymentSource('manual')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
+                            <div>
+                                <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                    <span>📝</span> Registro Manual / Baixa Direta
+                                    <span class="px-1.5 py-0.5 text-[9px] rounded bg-coral-100 dark:bg-coral-900/40 text-coral-700 dark:text-coral-300 font-semibold">Sem Exigência de Saldo</span>
+                                </p>
+                                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Para recebimentos diretos, transporte de registros antigos ou quando não houver comprovante anexo.</p>
+                            </div>
+                        </label>
+                        
+                        <!-- Opção 2: Abater do Saldo em Conta -->
+                        <label id="opt_balance_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group">
+                            <input type="radio" name="payment_source_radio" value="balance" onchange="setPaymentSource('balance')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
+                            <div>
+                                <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                    <span>💳</span> Abater do Saldo em Conta do Cantor
+                                </p>
+                                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Desconta o valor do saldo disponível no portal. (Saldo atual: <strong id="opt_balance_display_val">R$ 0,00</strong>)</p>
+                            </div>
+                        </label>
+                        
+                        <!-- Opção 3: Voucher / Cortesia -->
+                        <label id="opt_voucher_label" class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all group">
+                            <input type="radio" name="payment_source_radio" value="voucher" onchange="setPaymentSource('voucher')" class="mt-0.5 text-coral-500 focus:ring-coral-500">
+                            <div>
+                                <p class="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                    <span>🎫</span> Voucher / Cortesia / Isenção
+                                </p>
+                                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Baixa registrada como desconto ou cortesia concedida ao cantor (não altera o saldo).</p>
+                            </div>
+                        </label>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Campo de Observações (opcional) -->
-            <div id="voucher_obs_container" class="transition-all">
-                <label for="voucher_code" id="voucher_obs_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Observação / Histórico do Lançamento <span class="text-slate-400 font-normal">(opcional)</span></label>
-                <textarea name="voucher_code" id="voucher_code" rows="2"
-                          class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all resize-none"
-                          placeholder="Ex: Transporte de registro antigo do sistema anterior, recebido em mãos no ensaio..."></textarea>
-                <span class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Deixe em branco se não quiser registrar observações adicionais.</span>
-            </div>
-            
-            <!-- Input de Valor -->
-            <div>
-                <div class="flex justify-between items-center mb-1">
-                    <label for="pay_amount" id="pay_amount_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Valor a Baixar (R$)</label>
-                    <button type="button" onclick="useMaxPayAmount()" id="btn_use_all_balance" class="text-xs text-coral-500 hover:text-coral-600 font-bold focus:outline-none transition-colors">
-                        Preencher valor restante
-                    </button>
+                
+                <!-- Campo de Observações (opcional) -->
+                <div id="voucher_obs_container" class="transition-all">
+                    <label for="voucher_code" id="voucher_obs_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Observação / Histórico do Lançamento <span class="text-slate-400 font-normal">(opcional)</span></label>
+                    <textarea name="voucher_code" id="voucher_code" rows="2"
+                              class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all resize-none"
+                              placeholder="Ex: Transporte de registro antigo do sistema anterior, recebido em mãos no ensaio..."></textarea>
+                    <span class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Deixe em branco se não quiser registrar observações adicionais.</span>
                 </div>
-                <input type="text" inputmode="numeric" name="pay_amount" id="pay_amount" required
-                       data-currency-mask
-                       class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
-                       placeholder="0,00">
-                <span id="pay_amount_desc" class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Este valor será registrado como pago na cobrança (transporte de dados / sem exigência de saldo).</span>
+                
+                <!-- Input de Valor -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="pay_amount" id="pay_amount_label" class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Valor a Baixar (R$)</label>
+                        <button type="button" onclick="useMaxPayAmount()" id="btn_use_all_balance" class="text-xs text-coral-500 hover:text-coral-600 font-bold focus:outline-none transition-colors">
+                            Preencher valor restante
+                        </button>
+                    </div>
+                    <input type="text" inputmode="numeric" name="pay_amount" id="pay_amount" required
+                           data-currency-mask
+                           class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
+                           placeholder="0,00">
+                    <span id="pay_amount_desc" class="text-[10px] text-slate-400 dark:text-slate-500 block mt-1">Este valor será registrado como pago na cobrança (transporte de dados / sem exigência de saldo).</span>
+                </div>
             </div>
             
             <!-- Botões -->
-            <div class="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-700/50">
+            <div class="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-700/50 flex-shrink-0 mt-4">
                 <button type="button" onclick="closeManualPaymentModal()"
                         class="px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                     Cancelar
@@ -1126,22 +1128,22 @@ function useMaxPayAmount() {
 </script>
 
 <!-- Modal de Histórico de Cobrança (Fancy Timeline Style) -->
-<div id="modal-billing-history" class="fixed inset-0 z-50 overflow-y-auto hidden flex items-center justify-center p-4">
+<div id="modal-billing-history" class="fixed inset-0 z-50 overflow-y-auto hidden flex items-center justify-center p-4 min-h-screen">
     <!-- Backdrop Blur -->
     <div class="fixed inset-0 transition-opacity bg-slate-900/60 backdrop-blur-sm" onclick="closeHistoryModal()"></div>
     
     <!-- Modal Card -->
-    <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all max-w-lg w-full border border-slate-100 dark:border-slate-700/50 p-6 md:p-8">
+    <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all max-w-lg w-full border border-slate-100 dark:border-slate-700/50 p-6 md:p-8 max-h-[90vh] flex flex-col my-auto z-10">
         
         <!-- Botão Fechar -->
-        <button onclick="closeHistoryModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none">
+        <button onclick="closeHistoryModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none z-20">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
         </button>
         
         <!-- Header do Modal -->
-        <div class="mb-6">
+        <div class="mb-4 flex-shrink-0 pr-6">
             <div class="flex items-center justify-between gap-4">
                 <h3 class="text-lg font-bold font-outfit text-slate-900 dark:text-white" id="history-title">...</h3>
                 <span id="history-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold">...</span>
@@ -1149,33 +1151,35 @@ function useMaxPayAmount() {
             <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" id="history-description">...</p>
         </div>
         
-        <!-- Tabela Resumo Financeiro da Cobrança -->
-        <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-800 text-xs mb-6 grid grid-cols-3 gap-2 text-center">
-            <div>
-                <span class="text-slate-400 block mb-0.5">Valor Original</span>
-                <span class="font-bold text-slate-800 dark:text-white text-sm" id="history-amount">R$ 0,00</span>
+        <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-4">
+            <!-- Tabela Resumo Financeiro da Cobrança -->
+            <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-800 text-xs grid grid-cols-3 gap-2 text-center">
+                <div>
+                    <span class="text-slate-400 block mb-0.5">Valor Original</span>
+                    <span class="font-bold text-slate-800 dark:text-white text-sm" id="history-amount">R$ 0,00</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block mb-0.5">Total Pago</span>
+                    <span class="font-bold text-emerald-600 dark:text-emerald-400 text-sm" id="history-paid">R$ 0,00</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block mb-0.5">Saldo Restante</span>
+                    <span class="font-bold text-rose-500 dark:text-rose-400 text-sm" id="history-remaining">R$ 0,00</span>
+                </div>
             </div>
-            <div>
-                <span class="text-slate-400 block mb-0.5">Total Pago</span>
-                <span class="font-bold text-emerald-600 dark:text-emerald-400 text-sm" id="history-paid">R$ 0,00</span>
-            </div>
-            <div>
-                <span class="text-slate-400 block mb-0.5">Saldo Restante</span>
-                <span class="font-bold text-rose-500 dark:text-rose-400 text-sm" id="history-remaining">R$ 0,00</span>
-            </div>
-        </div>
-        
-        <!-- Timeline de Eventos -->
-        <div class="space-y-4">
-            <h4 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Histórico e Linha do Tempo</h4>
             
-            <div class="relative border-l border-slate-200 dark:border-slate-700 ml-3.5 space-y-6" id="history-timeline-container">
-                <!-- Gerado Dinamicamente -->
+            <!-- Timeline de Eventos -->
+            <div class="space-y-4">
+                <h4 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Histórico e Linha do Tempo</h4>
+                
+                <div class="relative border-l border-slate-200 dark:border-slate-700 ml-3.5 space-y-6" id="history-timeline-container">
+                    <!-- Gerado Dinamicamente -->
+                </div>
             </div>
         </div>
         
         <!-- Botão de Fechar -->
-        <div class="flex justify-end pt-6 mt-4 border-t border-slate-100 dark:border-slate-700/50">
+        <div class="flex justify-end pt-4 mt-4 border-t border-slate-100 dark:border-slate-700/50 flex-shrink-0">
             <button type="button" onclick="closeHistoryModal()"
                     class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-white font-semibold text-xs transition-colors">
                 Fechar
