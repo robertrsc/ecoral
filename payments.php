@@ -481,7 +481,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             // Buscar dados do recibo, cobrança e membro garantindo acesso do coral (ou bypass superadmin)
             $stmtRec = $pdo->prepare("
-                SELECT r.*, rbi.member_billing_id, mb.paid_amount as mb_paid_amount, mb.amount as mb_total_amount, 
+                SELECT r.*, rbi.member_billing_id, mb.paid_amount as mb_paid_amount, bi.amount as mb_total_amount, 
                        mb.due_date as mb_due_date, bi.title as billing_title, bi.type as billing_type,
                        u.id as member_id, u.name as member_name, u.email as member_email, u.balance as member_balance, 
                        u.choir_id as member_choir_id
