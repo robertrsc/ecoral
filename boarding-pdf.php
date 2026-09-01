@@ -6,6 +6,18 @@ ob_start();
 require_once __DIR__ . '/config.php';
 require_login();
 
+// Auto-sincronizar colunas no banco de dados se db_schema.php existir (garante colunas cpf, rg, logo)
+if (file_exists(__DIR__ . '/db_schema.php')) {
+    try {
+        require_once __DIR__ . '/db_schema.php';
+        if (function_exists('sync_database')) {
+            @sync_database($pdo);
+        }
+    } catch (Throwable $syncEx) {
+        // Ignorar erros secundários de sync
+    }
+}
+
 $loggedUser = get_logged_user();
 if (!is_admin_user() && ($loggedUser['role'] ?? '') !== 'colaborador') {
     set_flash_message('error', 'Você não tem permissão para emitir a lista de embarque.');
@@ -26,28 +38,39 @@ if (empty($member_ids)) {
     exit;
 }
 
-// Buscar dados dos membros selecionados no banco
+// Buscar dados dos membros selecionados no banco com fallback ultra seguro
 $placeholders = implode(',', array_fill(0, count($member_ids), '?'));
-$sql = "SELECT u.name, u.cpf, u.rg, u.phone, u.voice_type, u.member_code, c.name as choir_name, c.logo as choir_logo
-        FROM users u
-        LEFT JOIN choirs c ON u.choir_id = c.id
-        WHERE u.id IN ($placeholders)";
+$choirWhere = (!is_superadmin() && !empty($loggedUser['choir_id'])) ? " AND u.choir_id = " . intval($loggedUser['choir_id']) : "";
 
-$params = $member_ids;
-if (!is_superadmin() && !empty($loggedUser['choir_id'])) {
-    $sql .= " AND u.choir_id = ?";
-    $params[] = intval($loggedUser['choir_id']);
-}
-$sql .= " ORDER BY u.name ASC";
-
+$members = [];
 try {
+    // Tenta query com logo do coral
+    $sql = "SELECT u.*, c.name as choir_name, c.logo as choir_logo
+            FROM users u
+            LEFT JOIN choirs c ON u.choir_id = c.id
+            WHERE u.id IN ($placeholders) $choirWhere
+            ORDER BY u.name ASC";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    $stmt->execute($member_ids);
     $members = $stmt->fetchAll();
-} catch (Exception $e) {
-    set_flash_message('error', 'Erro ao carregar dados para a lista de embarque: ' . $e->getMessage());
-    header("Location: members.php");
-    exit;
+} catch (PDOException $e1) {
+    try {
+        // Fallback sem coluna logo
+        $sql = "SELECT u.*, c.name as choir_name
+                FROM users u
+                LEFT JOIN choirs c ON u.choir_id = c.id
+                WHERE u.id IN ($placeholders) $choirWhere
+                ORDER BY u.name ASC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($member_ids);
+        $members = $stmt->fetchAll();
+    } catch (PDOException $e2) {
+        // Fallback mínimo só na tabela users
+        $sql = "SELECT u.* FROM users u WHERE u.id IN ($placeholders) ORDER BY u.name ASC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($member_ids);
+        $members = $stmt->fetchAll();
+    }
 }
 
 if (empty($members)) {
@@ -62,7 +85,7 @@ $choirLogo = $members[0]['choir_logo'] ?? null;
 // Incluir a biblioteca FPDF
 require_once __DIR__ . '/vendor/fpdf/fpdf.php';
 
-// Função auxiliar estática de conversao de string ISO-8859-1 com fallback cPanel
+// Função auxiliar estática de conversão de string ISO-8859-1 com fallback cPanel
 function safePdfStr($str) {
     if ($str === null || $str === '') return '';
     $str = (string)$str;
@@ -192,7 +215,7 @@ try {
             $pdf->SetFillColor(255, 255, 255);
         }
 
-        $nameDisplay = trim($m['name']);
+        $nameDisplay = trim($m['name'] ?? '');
         if (!empty($m['voice_type'])) {
             $nameDisplay .= ' (' . $m['voice_type'] . ')';
         }
