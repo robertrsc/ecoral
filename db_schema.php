@@ -53,6 +53,7 @@ function get_db_schema() {
                 `address_state` VARCHAR(2) NULL,
                 `reset_token` VARCHAR(255) NULL,
                 `reset_expires` DATETIME NULL,
+                `permissions` TEXT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT `fk_users_choir` FOREIGN KEY (`choir_id`) REFERENCES `choirs` (`id`) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -222,6 +223,17 @@ function sync_database(PDO $pdo) {
         }
     } catch (PDOException $e) {
         $results['users_alter_member_code'] = ['success' => false, 'message' => "Erro ao adicionar 'member_code': " . $e->getMessage()];
+    }
+
+    // Sincronizar coluna permissions na tabela users
+    try {
+        $stmtCheck = $pdo->query("SHOW COLUMNS FROM `users` LIKE 'permissions'");
+        if ($stmtCheck->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `permissions` TEXT NULL;");
+            $results['users_alter_permissions'] = ['success' => true, 'message' => "Coluna 'permissions' adicionada à tabela 'users'."];
+        }
+    } catch (PDOException $e) {
+        $results['users_alter_permissions'] = ['success' => false, 'message' => "Erro ao adicionar 'permissions': " . $e->getMessage()];
     }
 
     // Sincronizar novas colunas de perfil na tabela users

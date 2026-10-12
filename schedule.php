@@ -125,8 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Ações Administrativas
-if (is_admin_user()) {
+// Ações Administrativas de Agenda
+if (has_permission('manage_schedule')) {
     // 2. Criar compromisso
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'new') {
         $title = trim($_POST['title'] ?? '');
@@ -240,8 +240,8 @@ if ($choir_id > 0) {
     $params = [];
     $today = date('Y-m-d H:i:s');
     
-    if ($user['role'] === 'membro') {
-        // Cantor vê apenas o que o atinge
+    if (!has_permission('manage_schedule')) {
+        // Usuário regular sem permissão de gestão vê apenas o que o atinge
         $sql = "SELECT e.*, er.response as member_response,
                 (SELECT COUNT(*) FROM event_responses WHERE event_id = e.id AND response = 'going') as count_going,
                 (SELECT COUNT(*) FROM event_responses WHERE event_id = e.id AND response = 'not_going') as count_not_going
@@ -257,15 +257,17 @@ if ($choir_id > 0) {
         $params[':choir_id'] = $choir_id;
         $params[':voice_type'] = $user['voice_type'];
     } else {
-        // Admin vê tudo do coral
-        $sql = "SELECT e.*,
+        // Quem tem permissão de gerenciar agenda vê tudo do coral e a própria resposta se for membro
+        $sql = "SELECT e.*, er.response as member_response,
                 (SELECT COUNT(*) FROM event_responses WHERE event_id = e.id AND response = 'going') as count_going,
                 (SELECT COUNT(*) FROM event_responses WHERE event_id = e.id AND response = 'not_going') as count_not_going,
                 u.name as target_member_name
                 FROM events e
+                LEFT JOIN event_responses er ON e.id = er.event_id AND er.member_id = :user_id
                 LEFT JOIN users u ON e.target_member_id = u.id
                 WHERE e.choir_id = :choir_id";
         $params[':choir_id'] = $choir_id;
+        $params[':user_id'] = $user['id'];
     }
     
     if ($tab === 'past') {
@@ -313,7 +315,7 @@ require_once __DIR__ . '/layout_header.php';
         </p>
     </div>
     
-    <?php if (is_admin_user() && $choir_id > 0): ?>
+    <?php if (has_permission('manage_schedule') && $choir_id > 0): ?>
         <button onclick="openNewEventModal()"
                 class="px-4 py-2.5 bg-coral-500 hover:bg-coral-600 text-white font-semibold rounded-lg text-xs shadow-md transition-all">
             + Novo Evento
@@ -385,8 +387,8 @@ require_once __DIR__ . '/layout_header.php';
                                 </div>
                             </div>
                             
-                            <?php if (is_admin_user() && !$is_past): ?>
-                                <!-- Ações de Evento (Admin) -->
+                            <?php if (has_permission('manage_schedule') && !$is_past): ?>
+                                <!-- Ações de Evento (Quem gerencia agenda) -->
                                 <div class="flex items-center gap-2">
                                     <button onclick="openEditEventModal(<?= htmlspecialchars(json_encode($ev)) ?>)"
                                             class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors font-medium">
@@ -429,9 +431,28 @@ require_once __DIR__ . '/layout_header.php';
                     
                     <!-- Rodapé do Card (Respostas / Interação) -->
                     <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50 mt-auto">
+                        <?php if (has_permission('manage_schedule')): ?>
+                            <!-- Visão de Gestão: Contagem de Respostas e Lista -->
+                            <div class="flex items-center justify-between text-xs mb-2">
+                                <div class="flex gap-3">
+                                    <span class="text-green-600 dark:text-green-400 font-semibold flex items-center gap-1">
+                                        <span>Irei:</span> <strong><?= $ev['count_going'] ?></strong>
+                                    </span>
+                                    <span class="text-red-500 font-semibold flex items-center gap-1">
+                                        <span>Não vou:</span> <strong><?= $ev['count_not_going'] ?></strong>
+                                    </span>
+                                </div>
+                                
+                                <button onclick="openAttendanceModal(<?= $ev['id'] ?>)"
+                                        class="text-xs text-coral-500 hover:text-coral-600 font-bold hover:underline">
+                                    Ver Lista
+                                </button>
+                            </div>
+                        <?php endif; ?>
+
                         <?php if ($user['role'] === 'membro'): ?>
-                            <!-- Visão do Membro: Botões de Interação -->
-                            <div class="flex items-center justify-between gap-4">
+                            <!-- Interação do Membro: Marcar presença -->
+                            <div class="flex items-center justify-between gap-4 <?= has_permission('manage_schedule') ? 'pt-2 border-t border-slate-100 dark:border-slate-700/30' : '' ?>">
                                 <span class="text-[10px] text-slate-400">Sua participação:</span>
                                 
                                 <form action="schedule.php" method="POST" class="flex gap-2">
@@ -454,23 +475,6 @@ require_once __DIR__ . '/layout_header.php';
                                     </button>
                                 </form>
                             </div>
-                        <?php else: ?>
-                            <!-- Visão do Admin: Contagem de Respostas -->
-                            <div class="flex items-center justify-between text-xs">
-                                <div class="flex gap-3">
-                                    <span class="text-green-600 dark:text-green-400 font-semibold flex items-center gap-1">
-                                        <span>Irei:</span> <strong><?= $ev['count_going'] ?></strong>
-                                    </span>
-                                    <span class="text-red-500 font-semibold flex items-center gap-1">
-                                        <span>Não vou:</span> <strong><?= $ev['count_not_going'] ?></strong>
-                                    </span>
-                                </div>
-                                
-                                <button onclick="openAttendanceModal(<?= $ev['id'] ?>)"
-                                        class="text-xs text-coral-500 hover:text-coral-600 font-bold hover:underline">
-                                    Ver Lista
-                                </button>
-                            </div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -482,7 +486,7 @@ require_once __DIR__ . '/layout_header.php';
 <!-- ==============================================
      MODAIS ADMINISTRATIVOS (CADASTRAR / EDITAR)
      ============================================== -->
-<?php if (is_admin_user() && $choir_id > 0): ?>
+<?php if (has_permission('manage_schedule') && $choir_id > 0): ?>
     
     <!-- Modal 1: Novo Evento -->
     <div id="modal-new-event" class="fixed inset-0 z-50 overflow-y-auto hidden">

@@ -2,10 +2,10 @@
 // users.php
 require_once __DIR__ . '/config.php';
 
-// Apenas superadmin e administrador podem gerenciar usuários
+// Apenas quem possui permissão de gerenciar usuários pode acessar
 require_login();
 $loggedUser = get_logged_user();
-if (!is_superadmin() && $loggedUser['role'] !== 'administrador') {
+if (!is_superadmin() && !has_permission('manage_users')) {
     set_flash_message('error', 'Você não tem permissão para acessar esta página.');
     header("Location: dashboard.php");
     exit;
@@ -29,6 +29,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $role = trim($_POST['role'] ?? '');
+    
+    // Tratamento de permissões granulares customizadas
+    $posted_permissions = $_POST['permissions'] ?? [];
+    if (!is_array($posted_permissions)) {
+        $posted_permissions = [];
+    }
+    // Sanitizar lista de permissões válidas
+    $allowed_perm_keys = ['manage_schedule', 'manage_files', 'manage_users'];
+    // Permissão financeira só pode ser delegada por superadmin ou administrador legítimo
+    if (is_superadmin() || $loggedUser['role'] === 'administrador') {
+        $allowed_perm_keys[] = 'manage_financial';
+    }
+    $sanitized_permissions = array_values(array_intersect($posted_permissions, $allowed_perm_keys));
+    $permissions_json = !empty($sanitized_permissions) ? json_encode($sanitized_permissions) : null;
     
     $cpf = trim($_POST['cpf'] ?? '');
     $rg = trim($_POST['rg'] ?? '');
@@ -67,8 +81,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = 'A senha é obrigatória para novos usuários.';
                     } else {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, username, password, role, status, cpf, rg, address, address_number, address_neighborhood, address_zip_code, address_city, address_state) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)");
-                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state]);
+                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, username, password, role, permissions, status, cpf, rg, address, address_number, address_neighborhood, address_zip_code, address_city, address_state) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $permissions_json, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state]);
                         set_flash_message('success', "Usuário '$name' criado com sucesso.");
                         header("Location: users.php");
                         exit;
@@ -88,11 +102,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (!empty($password)) {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, password = ?, role = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, password = ?, role = ?, permissions = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $permissions_json, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
                     } else {
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, role = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $username, $role, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, role = ?, permissions = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $username, $role, $permissions_json, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
                     }
                     set_flash_message('success', "Usuário '$name' atualizado com sucesso.");
                     header("Location: users.php");
@@ -265,8 +279,8 @@ require_once __DIR__ . '/layout_header.php';
                            placeholder="alberto@email.com">
                 </div>
                 <div>
-                    <label for="role" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Nível de Permissão *</label>
-                    <select name="role" id="role" required
+                    <label for="role" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Perfil Principal *</label>
+                    <select name="role" id="role" required onchange="applyDefaultRolePermissions(this.value)"
                             class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
                         <option value="">Selecione...</option>
                         <option value="administrador" <?= isset($user_data['role']) && $user_data['role'] === 'administrador' ? 'selected' : '' ?>>Administrador</option>
@@ -276,6 +290,76 @@ require_once __DIR__ . '/layout_header.php';
                             <option value="superadmin" <?= isset($user_data['role']) && $user_data['role'] === 'superadmin' ? 'selected' : '' ?>>Super Admin Global</option>
                         <?php endif; ?>
                     </select>
+                </div>
+            </div>
+
+            <!-- Seção de Permissões Granulares Customizadas -->
+            <?php 
+                $active_user_perms = isset($user_data) ? user_permissions($user_data) : ['manage_schedule', 'manage_files', 'manage_users'];
+            ?>
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                <div class="flex items-center justify-between mb-2">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Permissões de Acesso (Caso a Caso)</h3>
+                        <p class="text-[11px] text-slate-400">Personalize com precisão quais módulos este usuário pode gerenciar.</p>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-medium">Controle Granular</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                    <!-- Agendamentos -->
+                    <label class="flex items-start p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-coral-400 dark:hover:border-coral-500 bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_schedule" id="perm_manage_schedule"
+                               <?= in_array('manage_schedule', $active_user_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>📅</span> Administrar Agendamentos
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Criar/editar compromissos e consultar listas de presença.</span>
+                        </div>
+                    </label>
+
+                    <!-- Arquivos -->
+                    <label class="flex items-start p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-coral-400 dark:hover:border-coral-500 bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_files" id="perm_manage_files"
+                               <?= in_array('manage_files', $active_user_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>📂</span> Administrar Arquivos
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Upload, exclusão e compartilhamento de partituras e guias.</span>
+                        </div>
+                    </label>
+
+                    <!-- Usuários e Cantores -->
+                    <label class="flex items-start p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-coral-400 dark:hover:border-coral-500 bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_users" id="perm_manage_users"
+                               <?= in_array('manage_users', $active_user_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>👥</span> Administrar Usuários & Membros
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Cadastrar, editar e gerenciar cantores do coral.</span>
+                        </div>
+                    </label>
+
+                    <!-- Finanças (Restrito) -->
+                    <label class="flex items-start p-3 rounded-xl border <?= (is_superadmin() || $loggedUser['role'] === 'administrador') ? 'border-amber-200 dark:border-amber-800/40 bg-amber-50/30 dark:bg-amber-950/10' : 'border-slate-200 dark:border-slate-800 opacity-60 bg-slate-100 dark:bg-slate-900/60' ?> cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_financial" id="perm_manage_financial"
+                               <?= in_array('manage_financial', $active_user_perms) ? 'checked' : '' ?>
+                               <?= (!is_superadmin() && $loggedUser['role'] !== 'administrador') ? 'disabled' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-amber-600 border-slate-300 focus:ring-amber-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>💰</span> Gestão Financeira
+                                <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-bold uppercase">Restrito</span>
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Criar cobranças, validar comprovantes e estornos.</span>
+                        </div>
+                    </label>
                 </div>
             </div>
 
@@ -457,6 +541,33 @@ require_once __DIR__ . '/layout_header.php';
 <?php endif; ?>
 
 <script>
+function applyDefaultRolePermissions(role) {
+    const permSchedule = document.getElementById('perm_manage_schedule');
+    const permFiles = document.getElementById('perm_manage_files');
+    const permUsers = document.getElementById('perm_manage_users');
+    const permFinancial = document.getElementById('perm_manage_financial');
+
+    if (!permSchedule || !permFiles || !permUsers) return;
+
+    if (role === 'administrador' || role === 'superadmin') {
+        permSchedule.checked = true;
+        permFiles.checked = true;
+        permUsers.checked = true;
+        if (permFinancial && !permFinancial.disabled) permFinancial.checked = true;
+    } else if (role === 'financeiro') {
+        permSchedule.checked = false;
+        permFiles.checked = false;
+        permUsers.checked = false;
+        if (permFinancial && !permFinancial.disabled) permFinancial.checked = true;
+    } else if (role === 'colaborador') {
+        // Colaborador tem agendamentos, arquivos e usuários por padrão
+        permSchedule.checked = true;
+        permFiles.checked = true;
+        permUsers.checked = true;
+        if (permFinancial) permFinancial.checked = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Máscara CPF: 000.000.000-00
     const cpfInput = document.getElementById('cpf');

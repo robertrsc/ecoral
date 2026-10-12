@@ -91,13 +91,72 @@ function require_role($roles = []) {
     }
 }
 
-// Retorna se o usuário é um dos administradores: superadmin, administrador, financeiro
+// Retorna todas as permissões granulares ativas para o usuário
+function user_permissions($user = null) {
+    if ($user === null) {
+        $user = get_logged_user();
+    }
+    if (!$user) return [];
+    
+    // Superadmin tem acesso irrestrito a todas as permissões
+    if ($user['role'] === 'superadmin') {
+        return ['manage_schedule', 'manage_files', 'manage_users', 'manage_financial'];
+    }
+    
+    // Se há permissões customizadas gravadas em formato JSON no banco
+    if (!empty($user['permissions'])) {
+        $perms = json_decode($user['permissions'], true);
+        if (is_array($perms)) {
+            return array_values(array_unique($perms));
+        }
+    }
+    
+    // Fallback padrão baseado no papel (role) caso não haja customização individual:
+    switch ($user['role']) {
+        case 'administrador':
+            return ['manage_schedule', 'manage_files', 'manage_users', 'manage_financial'];
+        case 'financeiro':
+            return ['manage_financial'];
+        case 'colaborador':
+            // Conforme especificado: colaborador administra agendamentos, arquivos e usuários, sem financeiro
+            return ['manage_schedule', 'manage_files', 'manage_users'];
+        case 'membro':
+        default:
+            return [];
+    }
+}
+
+// Verifica se o usuário possui determinada permissão granular
+function has_permission($permission, $user = null) {
+    if ($user === null) {
+        $user = get_logged_user();
+    }
+    if (!$user) return false;
+    
+    if ($user['role'] === 'superadmin') return true;
+    
+    $userPerms = user_permissions($user);
+    return in_array($permission, $userPerms);
+}
+
+// Exige que o usuário possua a permissão necessária para acessar uma rota/ação
+function require_permission($permission) {
+    require_login();
+    if (!has_permission($permission)) {
+        set_flash_message('error', 'Você não tem permissão para acessar esta área ou realizar esta operação.');
+        header("Location: dashboard.php");
+        exit;
+    }
+}
+
+// Retorna se o usuário é um dos administradores com poderes financeiros ou superadmin
 function is_admin_user($user = null) {
     if ($user === null) {
         $user = get_logged_user();
     }
     if (!$user) return false;
-    return in_array($user['role'], ['superadmin', 'administrador', 'financeiro']);
+    if ($user['role'] === 'superadmin') return true;
+    return has_permission('manage_financial', $user) || in_array($user['role'], ['administrador', 'financeiro']);
 }
 
 // Retorna se o usuário é superadmin

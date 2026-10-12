@@ -388,24 +388,38 @@ if (is_superadmin()) {
         <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
             <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white mb-4">Ações Rápidas</h2>
             <div class="flex flex-col gap-2">
-                <?php if ($user['role'] === 'administrador'): ?>
+                <?php if (has_permission('manage_users') || $user['role'] === 'administrador'): ?>
                     <a href="users.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-coral-500 hover:text-white dark:bg-slate-900 dark:hover:bg-coral-600 transition-all font-medium text-sm">
                         <span>👥</span> Gerenciar Equipe (Users)
                     </a>
                 <?php endif; ?>
                 
-                <?php if (is_admin_user()): ?>
+                <?php if (has_permission('manage_users')): ?>
                     <a href="members.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-indigo-500 hover:text-white dark:bg-slate-900 dark:hover:bg-indigo-600 transition-all font-medium text-sm">
                         <span>🎤</span> Gerenciar Cantores (Membros)
                     </a>
-                    <a href="billing.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-teal-500 hover:text-white dark:bg-slate-900 dark:hover:bg-teal-600 transition-all font-medium text-sm">
-                        <span>💰</span> Criar Itens de Cobrança
+                <?php endif; ?>
+
+                <?php if (has_permission('manage_schedule')): ?>
+                    <a href="schedule.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-sky-500 hover:text-white dark:bg-slate-900 dark:hover:bg-sky-600 transition-all font-medium text-sm">
+                        <span>📅</span> Administrar Agenda / Eventos
+                    </a>
+                <?php endif; ?>
+
+                <?php if (has_permission('manage_files')): ?>
+                    <a href="files.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-amber-500 hover:text-white dark:bg-slate-900 dark:hover:bg-amber-600 transition-all font-medium text-sm">
+                        <span>📁</span> Administrar Arquivos e Partituras
                     </a>
                 <?php endif; ?>
                 
-                <a href="payments.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-purple-500 hover:text-white dark:bg-slate-900 dark:hover:bg-purple-600 transition-all font-medium text-sm">
-                    <span>🧾</span> Comprovantes de Pagamento
-                </a>
+                <?php if (has_permission('manage_financial')): ?>
+                    <a href="billing.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-teal-500 hover:text-white dark:bg-slate-900 dark:hover:bg-teal-600 transition-all font-medium text-sm">
+                        <span>💰</span> Criar Itens de Cobrança
+                    </a>
+                    <a href="payments.php" class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-purple-500 hover:text-white dark:bg-slate-900 dark:hover:bg-purple-600 transition-all font-medium text-sm">
+                        <span>🧾</span> Comprovantes de Pagamento
+                    </a>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -495,6 +509,24 @@ if (is_superadmin()) {
                     <button onclick="document.getElementById('modal-pay-balance').classList.remove('hidden')" class="flex items-center gap-3 p-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-semibold text-sm justify-center shadow-md">
                         <span>💰</span> Pagar Itens Usando Saldo
                     </button>
+                <?php endif; ?>
+
+                <?php if (has_permission('manage_schedule')): ?>
+                    <a href="schedule.php" class="flex items-center gap-3 p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition-all font-semibold text-sm justify-center border border-sky-200 dark:border-sky-800">
+                        <span>📅</span> Administrar Agenda
+                    </a>
+                <?php endif; ?>
+
+                <?php if (has_permission('manage_files')): ?>
+                    <a href="files.php" class="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-all font-semibold text-sm justify-center border border-amber-200 dark:border-amber-800">
+                        <span>📁</span> Administrar Arquivos
+                    </a>
+                <?php endif; ?>
+
+                <?php if (has_permission('manage_users')): ?>
+                    <a href="members.php" class="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-all font-semibold text-sm justify-center border border-indigo-200 dark:border-indigo-800">
+                        <span>👥</span> Gerenciar Membros
+                    </a>
                 <?php endif; ?>
             </div>
         </div>

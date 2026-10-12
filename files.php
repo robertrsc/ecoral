@@ -86,9 +86,9 @@ if ($action === 'download') {
     $allowed = false;
     if (is_superadmin()) {
         $allowed = true;
-    } elseif (is_admin_user() && $file['choir_id'] == $user['choir_id']) {
+    } elseif (has_permission('manage_files') && $file['choir_id'] == $user['choir_id']) {
         $allowed = true;
-    } elseif ($user['role'] === 'membro' && $file['choir_id'] == $user['choir_id']) {
+    } elseif ($file['choir_id'] == $user['choir_id']) {
         // Cantor: verificar se faz parte do target
         if ($file['target_type'] === 'all') {
             $allowed = true;
@@ -139,8 +139,8 @@ if ($action === 'download') {
     exit;
 }
 
-// 2. Ação: EXCLUIR ARQUIVO (Admin apenas)
-if ($action === 'delete' && is_admin_user()) {
+// 2. Ação: EXCLUIR ARQUIVO (Quem gerencia arquivos)
+if ($action === 'delete' && has_permission('manage_files')) {
     $file_id = intval($_GET['id'] ?? 0);
     
     if ($file_id > 0) {
@@ -183,8 +183,8 @@ if ($action === 'delete' && is_admin_user()) {
     exit;
 }
 
-// 3. Ação: UPLOAD DE ARQUIVO (Admin apenas)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'upload' && is_admin_user()) {
+// 3. Ação: UPLOAD DE ARQUIVO (Quem gerencia arquivos)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'upload' && has_permission('manage_files')) {
     $title = trim($_POST['title'] ?? '');
     $target_type = trim($_POST['target_type'] ?? 'all');
     $target_voice_type = trim($_POST['target_voice_type'] ?? null);
@@ -261,8 +261,8 @@ if ($choir_id > 0) {
 
 $files = [];
 if ($choir_id > 0) {
-    if ($user['role'] === 'membro') {
-        // Membro: Filtrar arquivos destinados a ele
+    if (!has_permission('manage_files')) {
+        // Usuário regular: Filtrar arquivos destinados a ele
         $sql = "SELECT sf.*, u.name as uploader_name 
                 FROM shared_files sf
                 JOIN users u ON sf.uploaded_by = u.id
@@ -281,7 +281,7 @@ if ($choir_id > 0) {
         ]);
         $files = $stmt->fetchAll();
     } else {
-        // Admin: Visualizar todos os arquivos do coral
+        // Quem gerencia arquivos: Visualizar todos os arquivos do coral
         $sql = "SELECT sf.*, u.name as uploader_name, m.name as member_name
                 FROM shared_files sf
                 JOIN users u ON sf.uploaded_by = u.id
@@ -327,7 +327,7 @@ require_once __DIR__ . '/layout_header.php';
         </p>
     </div>
     
-    <?php if (is_admin_user() && $choir_id > 0): ?>
+    <?php if (has_permission('manage_files') && $choir_id > 0): ?>
         <button onclick="openUploadModal()"
                 class="px-4 py-2.5 bg-coral-500 hover:bg-coral-600 text-white font-semibold rounded-lg text-xs shadow-md transition-all">
             + Compartilhar Arquivo
@@ -420,7 +420,7 @@ require_once __DIR__ . '/layout_header.php';
                                         📥 Baixar
                                     </a>
                                     
-                                    <?php if (is_admin_user()): ?>
+                                    <?php if (has_permission('manage_files')): ?>
                                         <a href="files.php?action=delete&id=<?= $f['id'] ?><?= is_superadmin() ? '&choir_id='.$choir_id : '' ?>"
                                            onclick="return confirm('Deseja realmente excluir este arquivo compartilhado? Ele será removido permanentemente de nossos servidores.')"
                                            class="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400 transition-colors">
@@ -440,7 +440,7 @@ require_once __DIR__ . '/layout_header.php';
 <!-- ==============================================
      MODAL DE UPLOAD (ADMINS APENAS)
      ============================================== -->
-<?php if (is_admin_user() && $choir_id > 0): ?>
+<?php if (has_permission('manage_files') && $choir_id > 0): ?>
     <div id="modal-upload-file" class="fixed inset-0 z-50 overflow-y-auto hidden">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div class="fixed inset-0 transition-opacity bg-slate-900/80 backdrop-blur-sm" onclick="closeUploadModal()"></div>

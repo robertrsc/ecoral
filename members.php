@@ -2,10 +2,10 @@
 // members.php
 require_once __DIR__ . '/config.php';
 
-// Apenas superadmin, administrador e financeiro de cada coral podem gerenciar membros
+// Apenas superadmin ou quem possui permissão de gerenciar usuários/membros
 require_login();
 $loggedUser = get_logged_user();
-if (!is_superadmin() && !in_array($loggedUser['role'], ['administrador', 'financeiro'])) {
+if (!is_superadmin() && !has_permission('manage_users')) {
     set_flash_message('error', 'Você não tem permissão para acessar esta página.');
     header("Location: dashboard.php");
     exit;
@@ -594,6 +594,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $address_city = trim($_POST['address_city'] ?? '');
     $address_state = trim($_POST['address_state'] ?? '');
     
+    // Tratamento de permissões delegadas ao cantor
+    $posted_permissions = $_POST['permissions'] ?? [];
+    if (!is_array($posted_permissions)) {
+        $posted_permissions = [];
+    }
+    // Para cantores, apenas permissões operacionais podem ser delegadas (NUNCA financeiro)
+    $allowed_singer_perms = ['manage_schedule', 'manage_files'];
+    if (is_superadmin() || $loggedUser['role'] === 'administrador') {
+        $allowed_singer_perms[] = 'manage_users';
+    }
+    $sanitized_permissions = array_values(array_intersect($posted_permissions, $allowed_singer_perms));
+    $permissions_json = !empty($sanitized_permissions) ? json_encode($sanitized_permissions) : null;
+    
     // Suporta: hidden da máscara (1234.56), campo display (1.234,56) ou numérico puro
     $balance = parse_currency_input($_POST['balance'] ?? $_POST['balance_display'] ?? '0');
     
@@ -619,8 +632,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         $member_code = get_or_generate_member_code($pdo, $voice_type, $choir_id);
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, phone, voice_type, member_code, username, password, role, status, balance, cpf, rg, address, address_number, address_neighborhood, address_zip_code, address_city, address_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'membro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state]);
+                        $stmt = $pdo->prepare("INSERT INTO users (choir_id, name, email, phone, voice_type, member_code, username, password, role, permissions, status, balance, cpf, rg, address, address_number, address_neighborhood, address_zip_code, address_city, address_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'membro', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $permissions_json, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state]);
                         $new_member_id = $pdo->lastInsertId();
                         if ($status === 'active') {
                             sync_recurring_billings($pdo, $choir_id, $new_member_id);
@@ -653,11 +666,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (!empty($password)) {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, password = ?, status = ?, balance = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, password = ?, permissions = ?, status = ?, balance = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $hashedPassword, $permissions_json, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
                     } else {
-                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, status = ?, balance = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
-                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
+                        $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, phone = ?, voice_type = ?, member_code = ?, username = ?, permissions = ?, status = ?, balance = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                        $stmt->execute([$choir_id, $name, $email, $phone, $voice_type, $member_code, $username, $permissions_json, $status, $balance, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $edit_id]);
                     }
                     if ($status === 'active') {
                         sync_recurring_billings($pdo, $choir_id, $edit_id);
@@ -1043,6 +1056,51 @@ require_once __DIR__ . '/layout_header.php';
                            class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
                            placeholder="Senha de acesso">
                 </div>
+            </div>
+
+            <!-- Seção de Permissões Especiais Delegadas ao Cantor -->
+            <?php 
+                $active_singer_perms = isset($member_data) ? user_permissions($member_data) : [];
+            ?>
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                <div class="flex items-center justify-between mb-2">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Permissões Especiais Delegadas ao Cantor</h3>
+                        <p class="text-[11px] text-slate-400">Permita que este cantor ajude na administração de tarefas específicas do coral.</p>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold">Delegação</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                    <!-- Agendamentos -->
+                    <label class="flex items-start p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-coral-400 dark:hover:border-coral-500 bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_schedule"
+                               <?= in_array('manage_schedule', $active_singer_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>📅</span> Cuidar da Agenda de Ensaios/Eventos
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Criar novos agendamentos e acompanhar presenças do coral.</span>
+                        </div>
+                    </label>
+
+                    <!-- Arquivos -->
+                    <label class="flex items-start p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-coral-400 dark:hover:border-coral-500 bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_files"
+                               <?= in_array('manage_files', $active_singer_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>📂</span> Envio & Gestão de Arquivos/Partituras
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Subir partituras, áudios e guias de naipes para o coral.</span>
+                        </div>
+                    </label>
+                </div>
+                <p class="text-[10px] text-slate-400 italic mt-2">
+                    🔒 A área financeira (cobranças, pagamentos e caixa) permanece protegida e nunca é delegada a cantores.
+                </p>
             </div>
             
             <div class="flex justify-end gap-2 pt-4">
