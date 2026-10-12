@@ -132,7 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             $pdo->commit();
             set_flash_message('success', "Cobrança '{$billing['title']}' paga com sucesso utilizando seu saldo!");
-            header("Location: dashboard.php");
+            $redirect = ($_POST['redirect_to'] ?? '') === 'payments' ? 'payments.php?tab=financeiro' : 'dashboard.php';
+            header("Location: " . $redirect);
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -587,20 +588,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // ==============================================
 
 if ($user['role'] === 'membro') {
-    // Membro: Cobranças em aberto para selecionar no formulário
+    // Membro: Cobranças em aberto ou aguardando aprovação
     $stmtMyBillings = $pdo->prepare("SELECT mb.*, bi.title, bi.amount as item_amount, bi.type as billing_type 
                                      FROM member_billing mb 
                                      JOIN billing_items bi ON mb.billing_item_id = bi.id 
-                                     WHERE mb.member_id = ? AND mb.status = 'open' 
+                                     WHERE mb.member_id = ? AND mb.status IN ('open', 'pending_approval') 
                                      ORDER BY mb.due_date ASC");
     $stmtMyBillings->execute([$user['id']]);
     $myOpenBillings = $stmtMyBillings->fetchAll();
+    $totalOpenAmount = 0.0;
     foreach ($myOpenBillings as &$mob) {
         if (($mob['billing_type'] ?? '') === 'recurring') {
             $mob['title'] .= ' - ' . date('m/Y', strtotime($mob['due_date']));
         }
+        $mob['remaining_amount'] = floatval($mob['item_amount'] - $mob['paid_amount']);
+        if ($mob['status'] === 'open') {
+            $totalOpenAmount += $mob['remaining_amount'];
+        }
     }
     unset($mob);
+    $selectableBillings = array_values(array_filter($myOpenBillings, fn($b) => $b['status'] === 'open'));
+    $memberBalance = floatval($user['balance'] ?? 0);
     
     // Membro: Histórico pessoal de comprovantes enviados
     $stmtMyReceipts = $pdo->prepare("SELECT r.*, 
@@ -700,7 +708,7 @@ require_once __DIR__ . '/layout_header.php';
          1. PAINEL DO CANTOR (MEMBRO) - FORMULÁRIO DE ENVIO
          ============================================== -->
     <?php if ($user['role'] === 'membro'): ?>
-        <div class="lg:col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700/50 h-fit transition-all duration-200">
+        <div id="card-enviar-comprovante" class="lg:col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700/50 h-fit transition-all duration-200">
             <!-- Cabeçalho expansível / collapsável -->
             <button type="button"
                     id="toggle-upload-card-btn"
@@ -738,15 +746,15 @@ require_once __DIR__ . '/layout_header.php';
                     <div>
                         <label for="amount" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Valor Pago (R$) *</label>
                         <input type="text" inputmode="numeric" name="amount" id="amount" required
-                               data-currency-mask
-                               class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
-                               placeholder="0,00">
+                                data-currency-mask
+                                class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
+                                placeholder="0,00">
                     </div>
 
                     <div>
                         <label for="receipt_file" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Arquivo Comprovante (JPG, PNG ou PDF) *</label>
                         <input type="file" name="receipt_file" id="receipt_file" required accept=".jpg,.jpeg,.png,.pdf"
-                               class="w-full px-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-coral-100 file:text-coral-700 hover:file:bg-coral-200">
+                                class="w-full px-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-coral-100 file:text-coral-700 hover:file:bg-coral-200">
                     </div>
 
                     <div>
@@ -758,16 +766,16 @@ require_once __DIR__ . '/layout_header.php';
 
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Associar a quais cobranças em aberto?</label>
-                        <?php if (empty($myOpenBillings)): ?>
-                            <p class="text-[10px] text-slate-400">Nenhuma cobrança em aberto. O valor total será creditado em seu saldo!</p>
+                        <?php if (empty($selectableBillings)): ?>
+                            <p class="text-[10px] text-slate-400">Nenhuma cobrança em aberto aguardando envio de comprovante. O valor será creditado em seu saldo!</p>
                         <?php else: ?>
                             <div class="border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2 max-h-36 overflow-y-auto bg-slate-50 dark:bg-slate-900/40">
-                                <?php foreach ($myOpenBillings as $mob): ?>
+                                <?php foreach ($selectableBillings as $mob): ?>
                                     <label class="flex items-center text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                                        <input type="checkbox" name="selected_billings[]" value="<?= $mob['id'] ?>" data-amount="<?= floatval($mob['item_amount'] - $mob['paid_amount']) ?>"
+                                        <input type="checkbox" name="selected_billings[]" value="<?= $mob['id'] ?>" id="billing-cb-<?= $mob['id'] ?>" data-amount="<?= floatval($mob['remaining_amount']) ?>"
                                                class="w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 billing-checkbox">
                                         <span class="ml-2 font-medium">
-                                            <?= htmlspecialchars($mob['title']) ?> (<?= format_currency($mob['item_amount'] - $mob['paid_amount']) ?>)
+                                            <?= htmlspecialchars($mob['title']) ?> (<?= format_currency($mob['remaining_amount']) ?>)
                                         </span>
                                     </label>
                                 <?php endforeach; ?>
@@ -811,6 +819,137 @@ require_once __DIR__ . '/layout_header.php';
          LISTA DE COMPROVANTES (ADMINS OU HISTÓRICO MEMBRO) E HISTÓRICO DE PAGAMENTOS REALIZADOS
          ============================================== -->
     <div class="<?= $user['role'] === 'membro' ? 'lg:col-span-2' : 'lg:col-span-3' ?> space-y-6">
+
+        <?php if ($user['role'] === 'membro'): ?>
+            <!-- ==============================================
+                 CARD: MINHAS COBRANÇAS EM ABERTO (MEMBRO)
+                 ============================================== -->
+            <div id="cobrancas-aberto" class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white">
+                                Minhas Cobranças em Aberto
+                            </h2>
+                            <?php if (!empty($myOpenBillings)): ?>
+                                <span class="px-2 py-0.5 text-xs font-bold rounded-full bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400">
+                                    <?= count($myOpenBillings) ?>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            <?php if ($totalOpenAmount > 0): ?>
+                                Total a pagar: <strong class="text-rose-600 dark:text-rose-400"><?= format_currency($totalOpenAmount) ?></strong>
+                            <?php else: ?>
+                                Nenhum valor pendente de pagamento
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    
+                    <?php if ($memberBalance > 0 && !empty($selectableBillings)): ?>
+                        <button type="button" onclick="openBalanceModal()"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto cursor-pointer">
+                            <span>💰</span> Pagar com saldo (<?= format_currency($memberBalance) ?>)
+                        </button>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (empty($myOpenBillings)): ?>
+                    <div class="text-center py-8 text-slate-400 text-sm">
+                        <span class="text-2xl block mb-2">🎉</span>
+                        Tudo em dia! Você não possui cobranças em aberto no momento.
+                    </div>
+                <?php else: ?>
+                    <div class="overflow-x-auto -mx-2 sm:mx-0">
+                        <table class="w-full text-left text-xs border-collapse min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-slate-100 dark:border-slate-700 text-slate-400 font-semibold uppercase tracking-wider">
+                                    <th class="py-3 px-3">Título da Cobrança</th>
+                                    <th class="py-3 px-3 text-center">Vencimento</th>
+                                    <th class="py-3 px-3 text-right">Valor Restante</th>
+                                    <th class="py-3 px-3 text-center">Status</th>
+                                    <th class="py-3 px-3 text-right">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
+                                <?php foreach ($myOpenBillings as $mob): 
+                                    $isOverdue = strtotime($mob['due_date']) < strtotime(date('Y-m-d'));
+                                    $isPending = $mob['status'] === 'pending_approval';
+                                    $remAmount = $mob['remaining_amount'];
+                                ?>
+                                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                                        <td class="py-3 px-3 font-semibold text-slate-900 dark:text-white">
+                                            <div><?= htmlspecialchars($mob['title']) ?></div>
+                                            <?php if ($mob['paid_amount'] > 0): ?>
+                                                <span class="block text-[10px] text-emerald-500 font-normal">
+                                                    Parcialmente pago: <?= format_currency($mob['paid_amount']) ?> (Total: <?= format_currency($mob['item_amount']) ?>)
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="py-3 px-3 text-center whitespace-nowrap">
+                                            <span class="block font-medium <?= ($isOverdue && !$isPending) ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-600 dark:text-slate-300' ?>">
+                                                <?= format_date($mob['due_date']) ?>
+                                            </span>
+                                            <?php if ($isPending): ?>
+                                                <span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                                                    Comprovante enviado
+                                                </span>
+                                            <?php elseif ($isOverdue): ?>
+                                                <span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                                                    Vencida
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-normal text-slate-400">
+                                                    Em dia
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="py-3 px-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                                            <?= format_currency($remAmount) ?>
+                                        </td>
+                                        <td class="py-3 px-3 text-center whitespace-nowrap">
+                                            <?php if ($isPending): ?>
+                                                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+                                                    ⏳ Em Análise
+                                                </span>
+                                            <?php elseif ($isOverdue): ?>
+                                                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/20 dark:text-rose-300">
+                                                    ⚠️ Em Aberto
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/20 dark:text-blue-300">
+                                                    ℹ️ A Vencer
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="py-3 px-3 text-right whitespace-nowrap">
+                                            <?php if ($isPending): ?>
+                                                <span class="text-[11px] text-slate-400 italic">Aguardando</span>
+                                            <?php else: ?>
+                                                <div class="flex items-center justify-end gap-1.5">
+                                                    <?php if ($memberBalance >= $remAmount): ?>
+                                                        <button type="button" onclick="openBalanceModal(<?= $mob['id'] ?>)"
+                                                                title="Pagar integralmente com saldo"
+                                                                class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold transition-colors cursor-pointer">
+                                                            Saldo
+                                                        </button>
+                                                    <?php endif; ?>
+                                                    <button type="button" onclick="selectBillingToPay(<?= $mob['id'] ?>, <?= $remAmount ?>)"
+                                                            class="px-2.5 py-1 rounded-lg bg-coral-500 hover:bg-coral-600 text-white text-xs font-semibold shadow-sm transition-colors flex items-center gap-1 cursor-pointer">
+                                                        <span>📎</span> Pagar
+                                                    </button>
+                                                </div>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
         <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
             <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white mb-4">
                 <?= $user['role'] === 'membro' ? 'Meu Histórico de Comprovantes' : 'Todos os Comprovantes Recebidos' ?>
@@ -942,6 +1081,60 @@ require_once __DIR__ . '/layout_header.php';
     </div>
 </div>
 
+<?php if ($user['role'] === 'membro' && $memberBalance > 0 && !empty($selectableBillings)): ?>
+    <!-- Modal para Pagar usando Saldo -->
+    <div id="modal-pay-balance" class="fixed inset-0 z-50 overflow-y-auto hidden">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity bg-slate-900/80 backdrop-blur-sm" onclick="closeBalanceModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            
+            <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full border border-slate-100 dark:border-slate-700/50 p-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-lg font-bold font-outfit text-slate-900 dark:text-white">Pagar com Saldo</h3>
+                    <button type="button" onclick="closeBalanceModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg font-bold p-1 cursor-pointer">
+                        &times;
+                    </button>
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    Seu saldo atual é de <strong class="text-emerald-500 font-bold"><?= format_currency($memberBalance) ?></strong>. 
+                    Escolha uma cobrança em aberto para quitar integralmente usando seu saldo.
+                </p>
+                
+                <form action="payments.php" method="POST" class="space-y-4">
+                    <input type="hidden" name="action" value="pay_with_balance">
+                    <input type="hidden" name="redirect_to" value="payments">
+                    <div>
+                        <label for="balance_member_billing_id" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Selecione a Cobrança</label>
+                        <select name="member_billing_id" id="balance_member_billing_id" required
+                                class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all">
+                            <option value="">Selecione...</option>
+                            <?php foreach ($selectableBillings as $mb): 
+                                $rem = $mb['remaining_amount'];
+                                $canPay = ($memberBalance >= $rem);
+                            ?>
+                                <option value="<?= $mb['id'] ?>" data-amount="<?= $rem ?>" <?= !$canPay ? 'disabled' : '' ?>>
+                                    <?= htmlspecialchars($mb['title']) ?> (Resta: <?= format_currency($rem) ?>)<?= !$canPay ? ' - Saldo insuficiente' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="flex justify-end gap-2 pt-4">
+                        <button type="button" onclick="closeBalanceModal()"
+                                class="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-white transition-colors cursor-pointer">
+                            Cancelar
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition-colors font-medium cursor-pointer">
+                            Confirmar Pagamento
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>
+
 <script>
 function toggleUploadCard() {
     const body = document.getElementById('upload-card-body');
@@ -970,6 +1163,62 @@ function toggleUploadCard() {
         if (badge) badge.classList.remove('hidden');
         if (subtitle) subtitle.textContent = 'Toque para expandir e enviar';
         if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function openBalanceModal(billingId = null) {
+    const modal = document.getElementById('modal-pay-balance');
+    if (!modal) return;
+    if (billingId) {
+        const select = document.getElementById('balance_member_billing_id');
+        if (select) {
+            select.value = billingId;
+        }
+    }
+    modal.classList.remove('hidden');
+}
+
+function closeBalanceModal() {
+    const modal = document.getElementById('modal-pay-balance');
+    if (modal) modal.classList.add('hidden');
+}
+
+function selectBillingToPay(billingId, amount) {
+    // 1. Garante que o card de upload está aberto
+    const uploadBody = document.getElementById('upload-card-body');
+    if (uploadBody && uploadBody.classList.contains('hidden')) {
+        toggleUploadCard();
+    }
+    
+    // 2. Marca apenas a cobrança selecionada
+    const targetCheckbox = document.getElementById('billing-cb-' + billingId);
+    document.querySelectorAll('.billing-checkbox').forEach(cb => {
+        cb.checked = (cb === targetCheckbox);
+    });
+    
+    // 3. Preenche o valor (dispara evento input para ativar máscara de moeda)
+    const amountInput = document.getElementById('amount');
+    if (amountInput) {
+        const cents = Math.round(parseFloat(amount) * 100);
+        amountInput.value = cents > 0 ? cents.toString() : '';
+        amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const hiddenAmount = document.querySelector('input[type="hidden"][name="amount"]');
+    if (hiddenAmount) {
+        hiddenAmount.value = parseFloat(amount).toFixed(2);
+    }
+    
+    // 4. Atualiza o totalizador
+    updateSelectedTotal();
+    
+    // 5. Rola suavemente até o formulário e foca no arquivo
+    const uploadCard = document.getElementById('card-enviar-comprovante');
+    if (uploadCard) {
+        uploadCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const fileInput = document.getElementById('receipt_file');
+    if (fileInput) {
+        setTimeout(() => fileInput.focus(), 350);
     }
 }
 
@@ -1053,8 +1302,15 @@ function updateSelectedTotal() {
         sumContainer.classList.remove('hidden');
         sumVal.innerText = 'R$ ' + total.toFixed(2).replace('.', ',');
         
-        const declared = parseFloat(amountInput.value) || 0;
-        if (declared < total) {
+        let declared = 0;
+        const hiddenAmount = document.querySelector('input[type="hidden"][name="amount"]');
+        if (hiddenAmount && hiddenAmount.value) {
+            declared = parseFloat(hiddenAmount.value) || 0;
+        } else if (amountInput.value) {
+            declared = parseFloat(amountInput.value.replace(/\./g, '').replace(',', '.')) || 0;
+        }
+        
+        if (declared > 0 && declared < total) {
             warning.classList.remove('hidden');
         } else {
             warning.classList.add('hidden');
@@ -1085,7 +1341,14 @@ document.addEventListener('DOMContentLoaded', function() {
         form.addEventListener('submit', function(e) {
             const actionInput = form.querySelector('input[name="action"]');
             if (actionInput && actionInput.value === 'upload_receipt') {
-                const amountVal = parseFloat(amountInput.value) || 0;
+                let amountVal = 0;
+                const hiddenAmount = form.querySelector('input[type="hidden"][name="amount"]');
+                if (hiddenAmount && hiddenAmount.value) {
+                    amountVal = parseFloat(hiddenAmount.value) || 0;
+                } else if (amountInput && amountInput.value) {
+                    amountVal = parseFloat(amountInput.value.replace(/\./g, '').replace(',', '.')) || 0;
+                }
+                
                 let total = 0;
                 document.querySelectorAll('.billing-checkbox:checked').forEach(function(cb) {
                     total += parseFloat(cb.getAttribute('data-amount')) || 0;
