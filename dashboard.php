@@ -220,6 +220,7 @@ if (is_superadmin()) {
 ?>
 
 <!-- Saudação Principal -->
+<?php if ($user['role'] !== 'membro'): ?>
 <div class="mb-6">
     <h1 class="text-2xl md:text-3xl font-extrabold font-outfit text-slate-900 dark:text-white">
         Olá, <?= htmlspecialchars($user['name']) ?>!
@@ -232,6 +233,7 @@ if (is_superadmin()) {
         <?php endif; ?>
     </p>
 </div>
+<?php endif; ?>
 
 <!-- ==============================================
      1. DASHBOARD DO SUPERADMIN
@@ -467,166 +469,119 @@ if (is_superadmin()) {
      3. DASHBOARD DO CANTOR / MEMBRO
      ============================================== -->
 <?php else: ?>
-    
-    <!-- Cards de Estatísticas Membro -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <!-- Saldo Pessoal -->
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-            <div>
-                <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Meu Saldo no Coral</p>
-                <h3 class="text-3xl font-bold font-outfit text-emerald-500 mt-1"><?= format_currency($memberBalance) ?></h3>
-                <p class="text-[10px] text-slate-400 mt-1">Créditos de comprovantes aprovados livre de cobrança.</p>
-            </div>
-            <div class="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-        </div>
-        
-        <!-- Total Aberto -->
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-            <div>
-                <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total a Pagar</p>
-                <h3 class="text-3xl font-bold font-outfit text-rose-500 mt-1"><?= format_currency($totalOpenAmount) ?></h3>
-                <p class="text-[10px] text-slate-400 mt-1">Cobranças vencidas ou com vencimento para hoje.</p>
-            </div>
-            <div class="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-            </div>
-        </div>
+    <?php
+        $firstName = explode(' ', trim($user['name']))[0];
+        $openCount = count($myOpenBillings);
+        $topOpenBillings = array_slice($myOpenBillings, 0, 3);
+        $metroTiles = [
+            ['href' => 'payments.php?tab=pagar',      'icon' => '💳', 'title' => 'Pagar',      'subtitle' => 'Pagar ou enviar comprovantes', 'bg' => 'from-coral-500 to-rose-600',     'id' => 'tile-pagar'],
+            ['href' => 'payments.php?tab=financeiro', 'icon' => '📊', 'title' => 'Financeiro', 'subtitle' => 'Cobranças e comprovantes',     'bg' => 'from-emerald-500 to-teal-600',   'id' => 'tile-financeiro', 'badge' => $openCount],
+            ['href' => 'schedule.php', 'icon' => '📅', 'title' => 'Agenda',     'subtitle' => 'Agenda de eventos',            'bg' => 'from-sky-500 to-blue-600',       'id' => 'tile-agenda'],
+            ['href' => 'files.php',    'icon' => '📂', 'title' => 'Arquivos',   'subtitle' => 'Download de arquivos',         'bg' => 'from-amber-500 to-orange-600',   'id' => 'tile-arquivos'],
+            ['href' => 'profile.php',  'icon' => '👤', 'title' => 'Perfil',     'subtitle' => 'Meus dados',                   'bg' => 'from-violet-500 to-purple-600',  'id' => 'tile-perfil'],
+            ['href' => 'help.php',     'icon' => '❓', 'title' => 'Ajuda',      'subtitle' => 'Dúvidas frequentes',           'bg' => 'from-slate-600 to-slate-800',    'id' => 'tile-ajuda'],
+        ];
+    ?>
+
+    <!-- Saudação compacta -->
+    <div class="mb-4">
+        <h1 class="text-xl md:text-2xl font-extrabold font-outfit text-slate-900 dark:text-white">Olá, <?= htmlspecialchars($firstName) ?>! 👋</h1>
+        <p class="text-sm text-slate-500 dark:text-slate-400"><?= htmlspecialchars($choir['name']) ?></p>
     </div>
 
-    <!-- Listagem e Envio -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Ações Rápidas Membro -->
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
-            <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white mb-4">Minhas Operações</h2>
-            <div class="flex flex-col gap-2.5">
-                <a href="payments.php" class="flex items-center gap-3 p-3 rounded-xl bg-coral-500 text-white hover:bg-coral-600 transition-all font-semibold text-sm justify-center shadow-md">
-                    <span>📤</span> Enviar Novo Comprovante
-                </a>
-                
-                <?php if ($memberBalance > 0 && !empty($myOpenBillings)): ?>
-                    <button onclick="document.getElementById('modal-pay-balance').classList.remove('hidden')" class="flex items-center gap-3 p-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-semibold text-sm justify-center shadow-md">
-                        <span>💰</span> Pagar Itens Usando Saldo
-                    </button>
-                <?php endif; ?>
-
-                <?php if (has_permission('manage_schedule')): ?>
-                    <a href="schedule.php" class="flex items-center gap-3 p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition-all font-semibold text-sm justify-center border border-sky-200 dark:border-sky-800">
-                        <span>📅</span> Administrar Agenda
-                    </a>
-                <?php endif; ?>
-
-                <?php if (has_permission('manage_files')): ?>
-                    <a href="files.php" class="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-all font-semibold text-sm justify-center border border-amber-200 dark:border-amber-800">
-                        <span>📁</span> Administrar Arquivos
-                    </a>
-                <?php endif; ?>
-
-                <?php if (has_permission('manage_users')): ?>
-                    <a href="members.php" class="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-all font-semibold text-sm justify-center border border-indigo-200 dark:border-indigo-800">
-                        <span>👥</span> Gerenciar Membros
-                    </a>
-                <?php endif; ?>
-            </div>
+    <!-- Faixa discreta de total a pagar -->
+    <?php if ($totalOpenAmount > 0): ?>
+        <a href="payments.php?tab=financeiro" class="flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50 text-sm">
+            <span class="text-rose-700 dark:text-rose-300">Você tem <strong><?= format_currency($totalOpenAmount) ?></strong> a pagar</span>
+            <span class="font-semibold text-rose-600 dark:text-rose-400 whitespace-nowrap">Ver ›</span>
+        </a>
+    <?php else: ?>
+        <div class="mb-5 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 text-sm text-emerald-700 dark:text-emerald-300">
+            ✅ Tudo em dia! Nenhum valor vencido.
         </div>
+    <?php endif; ?>
 
-        <!-- Minhas Cobranças em Aberto -->
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50 md:col-span-2">
-            <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white mb-4">Minhas Cobranças em Aberto</h2>
-            
-            <?php if (empty($myOpenBillings)): ?>
-                <div class="text-center py-8 text-sm text-slate-400">Parabéns! Nenhuma cobrança em aberto no momento.</div>
-            <?php else: ?>
-                <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700/50">
-                    <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
-                        <thead class="bg-slate-50 dark:bg-slate-900/60">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Item</th>
-                                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Vencimento</th>
-                                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Valor</th>
-                                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/30">
-                            <?php foreach ($myOpenBillings as $mb): 
-                                $display_title = $mb['title'];
-                                if (($mb['billing_type'] ?? '') === 'recurring') {
-                                    $display_title .= ' - ' . date('m/Y', strtotime($mb['due_date']));
-                                }
-                            ?>
-                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onclick="openHistoryModal(<?= $mb['id'] ?>)">
-                                    <td class="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white flex items-center gap-1.5">
-                                        <?= htmlspecialchars($display_title) ?>
-                                        <span class="text-[10px] text-slate-400">🔍</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-slate-500 <?= strtotime($mb['due_date']) < time() ? 'text-red-500 font-semibold' : '' ?>">
-                                        <?= format_date($mb['due_date']) ?>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm font-bold text-slate-800 dark:text-white">
-                                        <?= format_currency($mb['item_amount'] - $mb['paid_amount']) ?>
-                                    </td>
-                                    <td class="px-4 py-3 text-xs">
-                                        <span class="px-2.5 py-0.5 rounded-full font-semibold <?= $mb['status'] === 'pending_approval' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300' ?>">
-                                            <?= $mb['status'] === 'pending_approval' ? 'Aguardando Aprovação' : 'Aberto' ?>
-                                        </span>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
+    <!-- Botões grandes estilo Metro -->
+    <nav aria-label="Menu principal" class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-8">
+        <?php foreach ($metroTiles as $t): ?>
+            <a href="<?= $t['href'] ?>" id="<?= $t['id'] ?>"
+               class="metro-tile relative flex flex-col justify-between min-h-[128px] p-4 rounded-2xl text-white bg-gradient-to-br <?= $t['bg'] ?> shadow-md focus:outline-none focus:ring-4 focus:ring-offset-2 focus:ring-slate-400">
+                <span class="text-4xl leading-none" aria-hidden="true"><?= $t['icon'] ?></span>
+                <span>
+                    <span class="block text-lg font-extrabold font-outfit leading-tight"><?= $t['title'] ?></span>
+                    <span class="block text-xs text-white/90 leading-snug mt-0.5"><?= $t['subtitle'] ?></span>
+                </span>
+                <?php if (!empty($t['badge'])): ?>
+                    <span class="absolute top-3 right-3 min-w-[26px] h-[26px] px-2 rounded-full bg-white text-rose-600 text-sm font-bold flex items-center justify-center shadow" title="Cobranças em aberto"><?= $t['badge'] ?></span>
+                <?php endif; ?>
+            </a>
+        <?php endforeach; ?>
+    </nav>
+
+    <!-- Próximas cobranças (máx. 3) -->
+    <section class="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700/50 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white">Próximas cobranças</h2>
+            <?php if ($memberBalance > 0 && !empty($myOpenBillings)): ?>
+                <button onclick="document.getElementById('modal-pay-balance').classList.remove('hidden')"
+                        class="px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold">
+                    💰 Pagar com saldo
+                </button>
             <?php endif; ?>
-            
-            <!-- Histórico de Cobranças Pagas -->
-            <div class="mt-8 border-t border-slate-100 dark:border-slate-700/50 pt-6">
-                <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white mb-4">Minhas Cobranças Pagas (Últimas 10)</h2>
-                
-                <?php if (empty($myPaidBillings)): ?>
-                    <div class="text-center py-6 text-sm text-slate-400">Nenhuma cobrança paga registrada ainda.</div>
-                <?php else: ?>
-                    <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700/50">
-                        <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
-                            <thead class="bg-slate-50 dark:bg-slate-900/60">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Item</th>
-                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Pago em</th>
-                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Valor Pago</th>
-                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/30">
-                                <?php foreach ($myPaidBillings as $mb): 
-                                    $display_title = $mb['title'];
-                                    if (($mb['billing_type'] ?? '') === 'recurring') {
-                                        $display_title .= ' - ' . date('m/Y', strtotime($mb['due_date']));
-                                    }
-                                ?>
-                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onclick="openHistoryModal(<?= $mb['id'] ?>)">
-                                        <td class="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white flex items-center gap-1.5">
-                                            <?= htmlspecialchars($display_title) ?>
-                                            <span class="text-[10px] text-slate-400">🔍</span>
-                                        </td>
-                                        <td class="px-4 py-3 text-sm text-slate-500">
-                                            <?= format_date($mb['paid_at']) ?>
-                                        </td>
-                                        <td class="px-4 py-3 text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                                            <?= format_currency($mb['paid_amount']) ?>
-                                        </td>
-                                        <td class="px-4 py-3 text-xs">
-                                            <span class="px-2.5 py-0.5 rounded-full font-semibold bg-green-100 text-green-800 dark:bg-green-950/20 dark:text-green-300">
-                                                Pago
-                                            </span>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
+        </div>
+
+        <?php if (empty($topOpenBillings)): ?>
+            <p class="text-center py-6 text-sm text-slate-400">Parabéns! Nenhuma cobrança em aberto. 🎉</p>
+        <?php else: ?>
+            <ul class="space-y-2.5">
+                <?php foreach ($topOpenBillings as $mb):
+                    $display_title = $mb['title'];
+                    if (($mb['billing_type'] ?? '') === 'recurring') {
+                        $display_title .= ' - ' . date('m/Y', strtotime($mb['due_date']));
+                    }
+                    $isOverdue = strtotime($mb['due_date']) < strtotime(date('Y-m-d'));
+                    $isPending = $mb['status'] === 'pending_approval';
+                ?>
+                    <li>
+                        <button type="button" onclick="openHistoryModal(<?= $mb['id'] ?>)"
+                                class="w-full text-left flex items-center justify-between gap-3 p-3.5 rounded-xl border border-slate-100 dark:border-slate-700/60 bg-slate-50/60 dark:bg-slate-900/30 hover:bg-slate-100 dark:hover:bg-slate-900/60 transition-colors">
+                            <span class="min-w-0">
+                                <span class="block font-semibold text-slate-800 dark:text-white text-[15px] truncate"><?= htmlspecialchars($display_title) ?></span>
+                                <span class="block text-xs mt-0.5 <?= $isOverdue ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-500 dark:text-slate-400' ?>">
+                                    <?= $isOverdue ? 'Venceu em ' : 'Vence em ' ?><?= format_date($mb['due_date']) ?>
+                                    <?php if ($isPending): ?> · <span class="text-amber-600 dark:text-amber-400">Em análise</span><?php endif; ?>
+                                </span>
+                            </span>
+                            <span class="text-base font-bold text-slate-900 dark:text-white whitespace-nowrap"><?= format_currency($mb['item_amount'] - $mb['paid_amount']) ?></span>
+                        </button>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+
+        <a href="payments.php?tab=financeiro" id="link-ver-todas-cobrancas"
+           class="mt-4 flex items-center justify-center gap-2 w-full min-h-[48px] rounded-xl border-2 border-coral-500 text-coral-600 dark:text-coral-400 font-semibold text-sm hover:bg-coral-50 dark:hover:bg-coral-950/30 transition-colors">
+            Ver todas as cobranças<?= $openCount > 3 ? ' (' . $openCount . ')' : '' ?> ›
+        </a>
+    </section>
+
+    <?php if (has_permission('manage_schedule') || has_permission('manage_files') || has_permission('manage_users')): ?>
+        <!-- Atalhos extras para coralistas com permissões administrativas -->
+        <section class="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700/50 mb-6">
+            <h2 class="text-sm font-bold font-outfit text-slate-800 dark:text-white mb-3">Gestão</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <?php if (has_permission('manage_schedule')): ?>
+                    <a href="schedule.php" class="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 font-semibold text-sm text-center">📅 Administrar Agenda</a>
+                <?php endif; ?>
+                <?php if (has_permission('manage_files')): ?>
+                    <a href="files.php" class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 font-semibold text-sm text-center">📁 Administrar Arquivos</a>
+                <?php endif; ?>
+                <?php if (has_permission('manage_users')): ?>
+                    <a href="members.php" class="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 font-semibold text-sm text-center">👥 Gerenciar Membros</a>
                 <?php endif; ?>
             </div>
-        </div>
-    </div>
+        </section>
+    <?php endif; ?>
 
     <!-- Modal para Pagar usando Saldo -->
     <?php if ($memberBalance > 0 && !empty($myOpenBillings)): ?>
