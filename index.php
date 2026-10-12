@@ -129,8 +129,11 @@ if (is_logged_in()) {
     </main>
 
     <footer class="border-t border-slate-200 dark:border-slate-800 py-6">
-        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
-            &copy; <?= date('Y') ?> eCoral SaaS. Plataforma de Gestão Musical.
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400 space-y-2">
+            <div>&copy; <?= date('Y') ?> eCoral SaaS. Plataforma de Gestão Musical.</div>
+            <div class="text-[11px] text-slate-400 dark:text-slate-500">
+                Powered by <a href="https://actoweb.com.br/" target="_blank" rel="noopener noreferrer" class="text-coral-500 hover:text-coral-600 dark:text-coral-400 font-semibold underline decoration-coral-500/30 hover:decoration-coral-600 transition-colors">actoweb.com.br</a>
+            </div>
         </div>
     </footer>
 

@@ -206,6 +206,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
     
+    <div class="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
+        Powered by <a href="https://actoweb.com.br/" target="_blank" rel="noopener noreferrer" class="text-coral-500 hover:text-coral-600 dark:text-coral-400 font-semibold underline decoration-coral-500/30 hover:decoration-coral-600 transition-colors">actoweb.com.br</a>
+    </div>
+    
     <script>
         function toggleTheme() {
             if (document.documentElement.classList.contains('dark')) {

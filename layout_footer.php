@@ -14,6 +14,9 @@
             </div>
             <p class="mt-2 md:mt-0 text-[10px]">Desenvolvido para a gestão profissional de corais musicais.</p>
         </div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 text-center text-xs text-slate-400 dark:text-slate-500">
+            Powered by <a href="https://actoweb.com.br/" target="_blank" rel="noopener noreferrer" class="text-coral-500 hover:text-coral-600 dark:text-coral-400 dark:hover:text-coral-300 font-semibold underline decoration-coral-500/30 hover:decoration-coral-600 transition-colors">actoweb.com.br</a>
+        </div>
     </footer>
 
     <!-- Scripts de Interação da UI -->
