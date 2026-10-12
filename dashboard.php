@@ -473,9 +473,16 @@ if (is_superadmin()) {
         $firstName = explode(' ', trim($user['name']))[0];
         $openCount = count($myOpenBillings);
         $topOpenBillings = array_slice($myOpenBillings, 0, 3);
+        $today = date('Y-m-d');
+        $overdueCount = 0;
+        foreach ($myOpenBillings as $b) {
+            if ($b['status'] === 'open' && $b['due_date'] < $today) {
+                $overdueCount++;
+            }
+        }
         $metroTiles = [
             ['href' => 'payments.php?tab=pagar',      'icon' => '💳', 'title' => 'Pagar',      'subtitle' => 'Pagar ou enviar comprovantes', 'bg' => 'from-coral-500 to-rose-600',     'id' => 'tile-pagar'],
-            ['href' => 'payments.php?tab=financeiro', 'icon' => '📊', 'title' => 'Financeiro', 'subtitle' => 'Cobranças e comprovantes',     'bg' => 'from-emerald-500 to-teal-600',   'id' => 'tile-financeiro', 'badge' => $openCount],
+            ['href' => 'payments.php?tab=financeiro', 'icon' => '📊', 'title' => 'Financeiro', 'subtitle' => 'Cobranças e comprovantes',     'bg' => 'from-emerald-500 to-teal-600',   'id' => 'tile-financeiro', 'badge' => $overdueCount],
             ['href' => 'schedule.php', 'icon' => '📅', 'title' => 'Agenda',     'subtitle' => 'Agenda de eventos',            'bg' => 'from-sky-500 to-blue-600',       'id' => 'tile-agenda'],
             ['href' => 'files.php',    'icon' => '📂', 'title' => 'Arquivos',   'subtitle' => 'Download de arquivos',         'bg' => 'from-amber-500 to-orange-600',   'id' => 'tile-arquivos'],
             ['href' => 'profile.php',  'icon' => '👤', 'title' => 'Perfil',     'subtitle' => 'Meus dados',                   'bg' => 'from-violet-500 to-purple-600',  'id' => 'tile-perfil'],
@@ -512,7 +519,7 @@ if (is_superadmin()) {
                     <span class="block text-xs text-white/90 leading-snug mt-0.5"><?= $t['subtitle'] ?></span>
                 </span>
                 <?php if (!empty($t['badge'])): ?>
-                    <span class="absolute top-3 right-3 min-w-[26px] h-[26px] px-2 rounded-full bg-white text-rose-600 text-sm font-bold flex items-center justify-center shadow" title="Cobranças em aberto"><?= $t['badge'] ?></span>
+                    <span class="absolute top-3 right-3 min-w-[26px] h-[26px] px-2 rounded-full bg-white text-rose-600 text-sm font-bold flex items-center justify-center shadow" title="Pagamentos vencidos"><?= $t['badge'] ?></span>
                 <?php endif; ?>
             </a>
         <?php endforeach; ?>

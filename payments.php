@@ -871,13 +871,13 @@ require_once __DIR__ . '/layout_header.php';
                                     <th class="py-3 px-3 text-right">Ação</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
-                                <?php foreach ($myOpenBillings as $mob): 
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300" id="billing-table-body">
+                                <?php foreach ($myOpenBillings as $index => $mob): 
                                     $isOverdue = strtotime($mob['due_date']) < strtotime(date('Y-m-d'));
                                     $isPending = $mob['status'] === 'pending_approval';
                                     $remAmount = $mob['remaining_amount'];
                                 ?>
-                                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                                    <tr class="billing-table-row hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors" data-billing-index="<?= $index ?>">
                                         <td class="py-3 px-3 font-semibold text-slate-900 dark:text-white">
                                             <div><?= htmlspecialchars($mob['title']) ?></div>
                                             <?php if ($mob['paid_amount'] > 0): ?>
@@ -945,6 +945,44 @@ require_once __DIR__ . '/layout_header.php';
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- PAGINAÇÃO DE COBRANÇAS EM ABERTO -->
+                    <div id="billing-pagination-bar" class="px-3 sm:px-4 py-3 mt-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-700/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                        <div class="flex items-center gap-3">
+                            <span class="text-slate-500 dark:text-slate-400">
+                                Mostrando <span id="billing-page-start" class="font-bold text-slate-700 dark:text-slate-300">1</span> a 
+                                <span id="billing-page-end" class="font-bold text-slate-700 dark:text-slate-300">3</span> de 
+                                <span id="billing-page-total" class="font-bold text-slate-700 dark:text-slate-300"><?= count($myOpenBillings) ?></span> cobranças
+                            </span>
+                            <div class="flex items-center gap-1">
+                                <label for="billing-page-size" class="text-slate-400 text-[11px] hidden sm:inline">Exibir:</label>
+                                <select id="billing-page-size" onchange="changeBillingPageSize(this.value)"
+                                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 text-xs focus:ring-1 focus:ring-coral-500 cursor-pointer">
+                                    <option value="3" selected>3 p/ pág.</option>
+                                    <option value="5">5 p/ pág.</option>
+                                    <option value="10">10 p/ pág.</option>
+                                    <option value="all">Todas</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 flex-wrap justify-center" id="billing-pagination-controls">
+                            <!-- Botão Anterior -->
+                            <button type="button" id="billing-page-prev" onclick="changeBillingPage(currentBillingPage - 1)"
+                                    class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-bold transition-all text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                                Anterior
+                            </button>
+                            
+                            <!-- Botões de páginas dinâmicos -->
+                            <div id="billing-page-numbers" class="flex items-center gap-1"></div>
+                            
+                            <!-- Botão Próximo -->
+                            <button type="button" id="billing-page-next" onclick="changeBillingPage(currentBillingPage + 1)"
+                                    class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-bold transition-all text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                                Próximo
+                            </button>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -1166,6 +1204,115 @@ function toggleUploadCard() {
     }
 }
 
+// ==============================================
+// PAGINAÇÃO DO CARD MINHAS COBRANÇAS EM ABERTO
+// ==============================================
+let currentBillingPage = 1;
+let billingPageSize = 3;
+
+function initBillingPagination() {
+    const tableBody = document.getElementById('billing-table-body');
+    if (!tableBody) return;
+    
+    // Ler preferência salva em localStorage se houver
+    const savedSize = localStorage.getItem('ecoral_billing_page_size');
+    const sizeSelect = document.getElementById('billing-page-size');
+    if (savedSize && sizeSelect) {
+        sizeSelect.value = savedSize;
+        billingPageSize = savedSize === 'all' ? 999999 : parseInt(savedSize, 10);
+    }
+    
+    updateBillingPagination();
+}
+
+function changeBillingPageSize(newVal) {
+    localStorage.setItem('ecoral_billing_page_size', newVal);
+    billingPageSize = newVal === 'all' ? 999999 : parseInt(newVal, 10);
+    currentBillingPage = 1;
+    updateBillingPagination();
+}
+
+function changeBillingPage(page) {
+    const rows = document.querySelectorAll('.billing-table-row');
+    const totalRows = rows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / billingPageSize));
+    
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    
+    currentBillingPage = page;
+    updateBillingPagination();
+}
+
+function updateBillingPagination() {
+    const rows = document.querySelectorAll('.billing-table-row');
+    const totalRows = rows.length;
+    if (totalRows === 0) return;
+    
+    const totalPages = Math.max(1, Math.ceil(totalRows / billingPageSize));
+    if (currentBillingPage > totalPages) currentBillingPage = totalPages;
+    
+    const startIdx = (currentBillingPage - 1) * billingPageSize;
+    const endIdx = startIdx + billingPageSize;
+    
+    rows.forEach((row, idx) => {
+        if (idx >= startIdx && idx < endIdx) {
+            row.classList.remove('hidden');
+        } else {
+            row.classList.add('hidden');
+        }
+    });
+    
+    // Atualizar textos informativos
+    const startEl = document.getElementById('billing-page-start');
+    const endEl = document.getElementById('billing-page-end');
+    const totalEl = document.getElementById('billing-page-total');
+    if (startEl) startEl.textContent = totalRows === 0 ? 0 : startIdx + 1;
+    if (endEl) endEl.textContent = Math.min(endIdx, totalRows);
+    if (totalEl) totalEl.textContent = totalRows;
+    
+    // Atualizar botões Anterior e Próximo
+    const prevBtn = document.getElementById('billing-page-prev');
+    const nextBtn = document.getElementById('billing-page-next');
+    if (prevBtn) prevBtn.disabled = (currentBillingPage <= 1);
+    if (nextBtn) nextBtn.disabled = (currentBillingPage >= totalPages);
+    
+    // Renderizar botões numéricos
+    const numbersContainer = document.getElementById('billing-page-numbers');
+    if (numbersContainer) {
+        numbersContainer.innerHTML = '';
+        if (totalPages <= 1) {
+            const btn = document.createElement('span');
+            btn.className = 'px-3 py-1.5 rounded-lg bg-coral-500 text-white font-bold transition-all text-xs';
+            btn.textContent = '1';
+            numbersContainer.appendChild(btn);
+        } else {
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentBillingPage - 1 && i <= currentBillingPage + 1)) {
+                    if (i === currentBillingPage) {
+                        const activeBtn = document.createElement('span');
+                        activeBtn.className = 'px-3 py-1.5 rounded-lg bg-coral-500 text-white font-bold transition-all text-xs';
+                        activeBtn.textContent = i;
+                        numbersContainer.appendChild(activeBtn);
+                    } else {
+                        const pageBtn = document.createElement('button');
+                        pageBtn.type = 'button';
+                        pageBtn.className = 'px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold transition-all text-xs cursor-pointer';
+                        pageBtn.textContent = i;
+                        pageBtn.onclick = () => changeBillingPage(i);
+                        numbersContainer.appendChild(pageBtn);
+                    }
+                } else if (i === currentBillingPage - 2 || i === currentBillingPage + 2) {
+                    const dots = document.createElement('span');
+                    dots.className = 'px-1 text-slate-400 font-bold';
+                    dots.textContent = '...';
+                    numbersContainer.appendChild(dots);
+                }
+            }
+        }
+    }
+}
+
 function openBalanceModal(billingId = null) {
     const modal = document.getElementById('modal-pay-balance');
     if (!modal) return;
@@ -1330,6 +1477,8 @@ document.addEventListener('change', function(e) {
 
 // Escutar mudanças no input de valor
 document.addEventListener('DOMContentLoaded', function() {
+    initBillingPagination();
+    
     const amountInput = document.getElementById('amount');
     if (amountInput) {
         amountInput.addEventListener('input', updateSelectedTotal);
