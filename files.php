@@ -123,8 +123,10 @@ if ($action === 'download') {
         'mp3'  => 'audio/mpeg',
         'ogg'  => 'audio/ogg'
     ];
-    $contentType = $mimeTypes[$ext] ?? 'application/octet-stream';
-    
+    // Modo de exibição: 'view' abre no navegador/player nativo, padrão 'download' baixa
+    $mode = $_GET['mode'] ?? 'download';
+    $disposition = ($mode === 'view') ? 'inline' : 'attachment';
+
     // Limpar buffers para evitar corrupção de binários
     if (ob_get_level()) {
         ob_end_clean();
@@ -132,7 +134,7 @@ if ($action === 'download') {
     
     header('Content-Description: File Transfer');
     header('Content-Type: ' . $contentType);
-    header('Content-Disposition: attachment; filename="' . basename($file['original_name']) . '"');
+    header('Content-Disposition: ' . $disposition . '; filename="' . rawurlencode(basename($file['original_name'])) . '"');
     header('Expires: 0');
     header('Cache-Control: must-revalidate');
     header('Pragma: public');
@@ -359,6 +361,26 @@ require_once __DIR__ . '/layout_header.php';
     </div>
 <?php else: ?>
     
+    <!-- Barra de Pesquisa e Filtros -->
+    <div class="mb-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+        <div class="relative flex-1">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                🔍
+            </span>
+            <input type="text" id="file_search_input" oninput="filterFilesList()"
+                   placeholder="Pesquisar por título, nome do arquivo ou naipe..."
+                   class="w-full pl-10 pr-10 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white shadow-sm transition-all">
+            <button id="file_search_clear" onclick="clearFileSearch()" type="button"
+                    class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs">
+                ✕
+            </button>
+        </div>
+        <div id="file_count_badge" class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 self-end sm:self-center px-1">
+            <span>Total:</span>
+            <span class="font-bold text-slate-700 dark:text-slate-200" id="file_count_num"><?= count($files) ?></span> arquivo(s)
+        </div>
+    </div>
+
     <!-- Grid/Lista de Arquivos Compartilhados -->
     <?php if (empty($files)): ?>
         <div class="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-slate-700/50 flex flex-col items-center justify-center min-h-[250px]">
@@ -371,7 +393,106 @@ require_once __DIR__ . '/layout_header.php';
             </p>
         </div>
     <?php else: ?>
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 overflow-hidden">
+        
+        <!-- Estado Vazio da Busca (JS) -->
+        <div id="files_search_empty" class="hidden bg-white dark:bg-slate-800 rounded-2xl p-8 text-center text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-slate-700/50 mb-4">
+            <span class="text-3xl block mb-2">🔎</span>
+            <p class="font-semibold text-slate-700 dark:text-slate-200 text-sm">Nenhum arquivo encontrado</p>
+            <p class="text-xs text-slate-400 mt-1">Tente pesquisar por outro termo ou limpe o campo de busca.</p>
+        </div>
+
+        <!-- 1. MODO MOBILE: Lista em Cards Compactos (sem rolagem horizontal) -->
+        <div class="block md:hidden space-y-3" id="files_mobile_container">
+            <?php foreach ($files as $f): 
+                $meta = get_file_type_meta($f['file_type']);
+                
+                // Formatação do público alvo
+                $target_badge = "";
+                $target_text_search = "todos";
+                if ($f['target_type'] === 'all') {
+                    $target_badge = "<span class='px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-semibold'>Todos</span>";
+                    $target_text_search = "todos todos os membros";
+                } elseif ($f['target_type'] === 'voice_type') {
+                    $target_badge = "<span class='px-2 py-0.5 rounded-full text-[10px] bg-coral-100 text-coral-700 dark:bg-coral-950/20 dark:text-coral-400 font-semibold'>Naipe: " . htmlspecialchars($f['target_voice_type']) . "</span>";
+                    $target_text_search = "naipe " . mb_strtolower($f['target_voice_type']);
+                } elseif ($f['target_type'] === 'member') {
+                    $nameToShow = $user['role'] === 'membro' ? 'Você' : ($f['member_name'] ?? 'Membro');
+                    $target_badge = "<span class='px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 font-semibold'>Membro: " . htmlspecialchars($nameToShow) . "</span>";
+                    $target_text_search = "membro " . mb_strtolower($nameToShow);
+                }
+                
+                $searchContent = mb_strtolower($f['title'] . ' ' . $f['original_name'] . ' ' . $f['file_type'] . ' ' . $target_text_search . ' ' . $f['uploader_name']);
+            ?>
+                <div class="file-item-card bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700/60 transition-all hover:shadow-md"
+                     data-search="<?= htmlspecialchars($searchContent) ?>">
+                    
+                    <!-- Topo do Card: Ícone + Título Clicável (Abre/Baixa) -->
+                    <div class="flex items-start gap-3">
+                        <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                           class="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700 active:scale-95 transition-transform"
+                           title="Visualizar / Reproduzir">
+                            <?= $meta['icon'] ?>
+                        </a>
+                        <div class="flex-1 min-w-0">
+                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                               class="block font-bold text-slate-900 dark:text-white text-sm hover:text-coral-500 dark:hover:text-coral-400 leading-snug line-clamp-2">
+                                <?= htmlspecialchars($f['title']) ?>
+                            </a>
+                            <div class="text-[11px] text-slate-400 dark:text-slate-400 truncate mt-0.5" title="<?= htmlspecialchars($f['original_name']) ?>">
+                                📎 <?= htmlspecialchars($f['original_name']) ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Informações secundárias / Metadados -->
+                    <div class="flex flex-wrap items-center gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/50 text-xs">
+                        <span class="px-2 py-0.5 rounded-md font-bold uppercase text-[10px] <?= $meta['color'] ?>">
+                            <?= htmlspecialchars($f['file_type']) ?>
+                        </span>
+                        <span class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                            <?= format_file_size($f['file_size']) ?>
+                        </span>
+                        <div class="ml-auto">
+                            <?= $target_badge ?>
+                        </div>
+                    </div>
+
+                    <!-- Rodapé com Ações Rápidas (Acessíveis pelo toque) -->
+                    <div class="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/50">
+                        <div class="text-[10px] text-slate-400 truncate max-w-[130px]">
+                            Por: <strong class="text-slate-600 dark:text-slate-300"><?= htmlspecialchars($f['uploader_name']) ?></strong>
+                        </div>
+
+                        <div class="flex items-center gap-2 shrink-0">
+                            <!-- Abrir / Visualizar -->
+                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                               class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold text-xs transition-colors">
+                                <span>👁️</span> Abrir
+                            </a>
+
+                            <!-- Baixar diretamente -->
+                            <a href="files.php?action=download&mode=download&id=<?= $f['id'] ?>"
+                               class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-coral-50 hover:bg-coral-100 text-coral-600 dark:bg-coral-950/30 dark:text-coral-400 font-semibold text-xs transition-colors">
+                                <span>📥</span> Baixar
+                            </a>
+
+                            <?php if (has_permission('manage_files')): ?>
+                                <a href="files.php?action=delete&id=<?= $f['id'] ?><?= is_superadmin() ? '&choir_id='.$choir_id : '' ?>"
+                                   onclick="return confirm('Deseja realmente excluir este arquivo?')"
+                                   class="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                                   title="Excluir arquivo">
+                                    🗑️
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- 2. MODO DESKTOP: Tabela Tradicional -->
+        <div class="hidden md:block bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50 overflow-hidden" id="files_desktop_container">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-slate-100 dark:divide-slate-700/50">
                     <thead class="bg-slate-50 dark:bg-slate-900/60">
@@ -388,23 +509,34 @@ require_once __DIR__ . '/layout_header.php';
                         <?php foreach ($files as $f): 
                             $meta = get_file_type_meta($f['file_type']);
                             
-                            // Formatação do público alvo
                             $target_label = "";
+                            $target_text_search = "todos";
                             if ($f['target_type'] === 'all') {
                                 $target_label = "<span class='px-2.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-semibold'>Todos</span>";
+                                $target_text_search = "todos todos os membros";
                             } elseif ($f['target_type'] === 'voice_type') {
                                 $target_label = "<span class='px-2.5 py-0.5 rounded-full text-[10px] bg-coral-100 text-coral-700 dark:bg-coral-950/20 dark:text-coral-400 font-semibold'>Naipe: " . htmlspecialchars($f['target_voice_type']) . "</span>";
+                                $target_text_search = "naipe " . mb_strtolower($f['target_voice_type']);
                             } elseif ($f['target_type'] === 'member') {
                                 $nameToShow = $user['role'] === 'membro' ? 'Você' : ($f['member_name'] ?? 'Membro');
                                 $target_label = "<span class='px-2.5 py-0.5 rounded-full text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 font-semibold'>Membro: " . htmlspecialchars($nameToShow) . "</span>";
+                                $target_text_search = "membro " . mb_strtolower($nameToShow);
                             }
+                            
+                            $searchContent = mb_strtolower($f['title'] . ' ' . $f['original_name'] . ' ' . $f['file_type'] . ' ' . $target_text_search . ' ' . $f['uploader_name']);
                         ?>
-                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                            <tr class="file-item-row hover:bg-slate-50 dark:hover:bg-slate-800/50" data-search="<?= htmlspecialchars($searchContent) ?>">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
                                     <div class="flex items-center gap-3">
-                                        <span class="text-2xl p-1 bg-slate-50 dark:bg-slate-900 rounded-xl" title="<?= htmlspecialchars($meta['label']) ?>"><?= $meta['icon'] ?></span>
+                                        <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                           class="text-2xl p-1 bg-slate-50 dark:bg-slate-900 rounded-xl hover:scale-110 transition-transform" title="Abrir / Visualizar">
+                                            <?= $meta['icon'] ?>
+                                        </a>
                                         <div>
-                                            <div class="font-bold text-slate-900 dark:text-white"><?= htmlspecialchars($f['title']) ?></div>
+                                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                               class="font-bold text-slate-900 dark:text-white hover:text-coral-500 dark:hover:text-coral-400 transition-colors">
+                                                <?= htmlspecialchars($f['title']) ?>
+                                            </a>
                                             <div class="text-[10px] text-slate-400 truncate max-w-xs" title="<?= htmlspecialchars($f['original_name']) ?>">
                                                 <?= htmlspecialchars($f['original_name']) ?>
                                             </div>
@@ -426,17 +558,25 @@ require_once __DIR__ . '/layout_header.php';
                                     <strong><?= htmlspecialchars($f['uploader_name']) ?></strong>
                                     <span class="block text-[10px] text-slate-400 mt-0.5"><?= date('d/m/Y H:i', strtotime($f['created_at'])) ?></span>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-semibold space-x-2">
-                                    <a href="files.php?action=download&id=<?= $f['id'] ?>"
-                                       class="px-3 py-1.5 rounded-lg bg-coral-50 hover:bg-coral-100 text-coral-600 dark:bg-coral-950/20 dark:text-coral-400 transition-colors">
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-semibold space-x-1.5">
+                                    <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                       class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300 transition-colors"
+                                       title="Abrir no navegador">
+                                        👁️ Abrir
+                                    </a>
+                                    
+                                    <a href="files.php?action=download&mode=download&id=<?= $f['id'] ?>"
+                                       class="px-2.5 py-1.5 rounded-lg bg-coral-50 hover:bg-coral-100 text-coral-600 dark:bg-coral-950/20 dark:text-coral-400 transition-colors"
+                                       title="Baixar arquivo">
                                         📥 Baixar
                                     </a>
                                     
                                     <?php if (has_permission('manage_files')): ?>
                                         <a href="files.php?action=delete&id=<?= $f['id'] ?><?= is_superadmin() ? '&choir_id='.$choir_id : '' ?>"
                                            onclick="return confirm('Deseja realmente excluir este arquivo compartilhado? Ele será removido permanentemente de nossos servidores.')"
-                                           class="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400 transition-colors">
-                                            Excluir
+                                           class="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400 transition-colors"
+                                           title="Excluir">
+                                            🗑️
                                         </a>
                                     <?php endif; ?>
                                 </td>
@@ -567,6 +707,71 @@ require_once __DIR__ . '/layout_header.php';
     </script>
 <?php endif; ?>
 
+    <script>
+    function filterFilesList() {
+        const input = document.getElementById('file_search_input');
+        const clearBtn = document.getElementById('file_search_clear');
+        const emptyState = document.getElementById('files_search_empty');
+        const countNum = document.getElementById('file_count_num');
+        
+        if (!input) return;
+        const query = input.value.trim().toLowerCase();
+        
+        if (clearBtn) {
+            if (query.length > 0) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
+        }
+        
+        let visibleCount = 0;
+        
+        // Filtrar cards mobile
+        const cards = document.querySelectorAll('.file-item-card');
+        cards.forEach(card => {
+            const text = card.getAttribute('data-search') || '';
+            if (!query || text.includes(query)) {
+                card.style.display = '';
+                visibleCount++;
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        
+        // Filtrar linhas desktop
+        const rows = document.querySelectorAll('.file-item-row');
+        rows.forEach(row => {
+            const text = row.getAttribute('data-search') || '';
+            if (!query || text.includes(query)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        if (countNum) {
+            countNum.textContent = visibleCount;
+        }
+        
+        if (emptyState) {
+            if (visibleCount === 0 && (cards.length > 0 || rows.length > 0)) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+        }
+    }
+
+    function clearFileSearch() {
+        const input = document.getElementById('file_search_input');
+        if (input) {
+            input.value = '';
+            filterFilesList();
+            input.focus();
+        }
+    }
+    </script>
 <?php
 require_once __DIR__ . '/layout_footer.php';
 ?>
