@@ -49,6 +49,7 @@ function get_file_type_meta($ext) {
         case 'png':
         case 'bmp':
             return ['icon' => '🖼️', 'color' => 'bg-teal-50 text-teal-700 dark:bg-teal-950/20 dark:text-teal-400', 'label' => 'Imagem'];
+        case 'mp3':
         case 'ogg':
             return ['icon' => '🎵', 'color' => 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400', 'label' => 'Música/Áudio'];
         case 'mp4':
@@ -119,6 +120,7 @@ if ($action === 'download') {
         'png'  => 'image/png',
         'bmp'  => 'image/bmp',
         'mp4'  => 'video/mp4',
+        'mp3'  => 'audio/mpeg',
         'ogg'  => 'audio/ogg'
     ];
     $contentType = $mimeTypes[$ext] ?? 'application/octet-stream';
@@ -195,15 +197,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (empty($title) || $choir_id <= 0) {
         $error = 'Por favor, preencha o título descritivo do arquivo.';
     } elseif (!isset($_FILES['shared_file']) || $_FILES['shared_file']['error'] !== UPLOAD_ERR_OK) {
-        $error = 'Por favor, selecione um arquivo válido para upload.';
+        if (isset($_FILES['shared_file']['error']) && ($_FILES['shared_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['shared_file']['error'] === UPLOAD_ERR_FORM_SIZE)) {
+            $error = 'O arquivo selecionado excede o limite permitido de 20MB.';
+        } else {
+            $error = 'Por favor, selecione um arquivo válido para upload.';
+        }
     } else {
         $fileInfo = $_FILES['shared_file'];
-        $ext = strtolower(pathinfo($fileInfo['name'], PATHINFO_EXTENSION));
-        $allowedExtensions = ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'bmp', 'mp4', 'ogg'];
-        
-        if (!in_array($ext, $allowedExtensions)) {
-            $error = 'Extensão de arquivo não permitida. Envie apenas: PDF, TXT, JPG, JPEG, PNG, BMP, MP4 ou OGG.';
+        $maxSizeBytes = 20 * 1024 * 1024; // 20 MB
+
+        if ($fileInfo['size'] > $maxSizeBytes) {
+            $error = 'O arquivo selecionado excede o tamanho máximo permitido de 20MB.';
         } else {
+            $ext = strtolower(pathinfo($fileInfo['name'], PATHINFO_EXTENSION));
+            $allowedExtensions = ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'bmp', 'mp4', 'mp3', 'ogg'];
+            
+            if (!in_array($ext, $allowedExtensions)) {
+                $error = 'Extensão de arquivo não permitida. Envie apenas: PDF, TXT, JPG, JPEG, PNG, BMP, MP4, MP3 ou OGG.';
+            } else {
             // Garantir que a pasta do coral exista
             $choirStorageDir = $storageRoot . '/' . $choir_id;
             if (!is_dir($choirStorageDir)) {
@@ -241,8 +252,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     }
                     $error = 'Erro ao salvar no banco de dados: ' . $e->getMessage();
                 }
-            } else {
-                $error = 'Falha ao salvar o arquivo físico no servidor.';
+                } else {
+                    $error = 'Falha ao salvar o arquivo físico no servidor.';
+                }
             }
         }
     }
@@ -462,10 +474,11 @@ require_once __DIR__ . '/layout_header.php';
                     </div>
                     
                     <div>
-                        <label for="shared_file" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Arquivo *</label>
-                        <input type="file" name="shared_file" id="shared_file" required accept=".pdf,.txt,.jpg,.jpeg,.png,.bmp,.mp4,.ogg"
+                        <label for="shared_file" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Arquivo * (Máx. 20 MB)</label>
+                        <input type="file" name="shared_file" id="shared_file" required accept=".pdf,.txt,.jpg,.jpeg,.png,.bmp,.mp4,.mp3,.ogg"
+                               onchange="validateFileSize(this)"
                                class="w-full px-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-coral-100 file:text-coral-700 hover:file:bg-coral-200">
-                        <p class="text-[10px] text-slate-400 mt-1">Formatos aceitos: Documentos (PDF, TXT), Imagens (JPG, JPEG, PNG, BMP), Músicas (MP4, OGG) e Vídeos (MP4).</p>
+                        <p class="text-[10px] text-slate-400 mt-1">Formatos aceitos: Documentos (PDF, TXT), Imagens (JPG, JPEG, PNG, BMP), Músicas (MP3, OGG) e Vídeos (MP4). Tamanho máximo: <strong>20 MB</strong>.</p>
                     </div>
                     
                     <div class="border-t border-slate-100 dark:border-slate-700/50 pt-4">
@@ -539,6 +552,16 @@ require_once __DIR__ . '/layout_header.php';
         } else if (type === 'member') {
             voiceCont.classList.add('hidden');
             memberCont.classList.remove('hidden');
+        }
+    }
+
+    function validateFileSize(input) {
+        const maxBytes = 20 * 1024 * 1024; // 20 MB
+        if (input.files && input.files[0]) {
+            if (input.files[0].size > maxBytes) {
+                alert('Atenção: O arquivo selecionado possui ' + (input.files[0].size / (1024 * 1024)).toFixed(2) + ' MB, o que ultrapassa o limite permitido de 20 MB.');
+                input.value = '';
+            }
         }
     }
     </script>
