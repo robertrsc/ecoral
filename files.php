@@ -41,22 +41,24 @@ function get_file_type_meta($ext) {
     $ext = strtolower($ext);
     switch ($ext) {
         case 'pdf':
-            return ['icon' => '📄', 'color' => 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400', 'label' => 'PDF Documento'];
+            return ['icon' => '📄', 'color' => 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400', 'label' => 'PDF Documento', 'is_media' => false, 'media_type' => null];
         case 'txt':
-            return ['icon' => '📝', 'color' => 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300', 'label' => 'Texto TXT'];
+            return ['icon' => '📝', 'color' => 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300', 'label' => 'Texto TXT', 'is_media' => false, 'media_type' => null];
         case 'jpg':
         case 'jpeg':
         case 'png':
         case 'bmp':
-            return ['icon' => '🖼️', 'color' => 'bg-teal-50 text-teal-700 dark:bg-teal-950/20 dark:text-teal-400', 'label' => 'Imagem'];
+            return ['icon' => '🖼️', 'color' => 'bg-teal-50 text-teal-700 dark:bg-teal-950/20 dark:text-teal-400', 'label' => 'Imagem', 'is_media' => false, 'media_type' => null];
         case 'mp3':
         case 'ogg':
-            return ['icon' => '🎵', 'color' => 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400', 'label' => 'Música/Áudio'];
+        case 'wav':
+        case 'm4a':
+            return ['icon' => '🎵', 'color' => 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400', 'label' => 'Áudio', 'is_media' => true, 'media_type' => 'audio'];
         case 'mp4':
-            // MP4 pode ser áudio ou vídeo. Vamos rotular amigavelmente.
-            return ['icon' => '🎥', 'color' => 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400', 'label' => 'Vídeo/Mídia'];
+        case 'webm':
+            return ['icon' => '🎬', 'color' => 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400', 'label' => 'Vídeo MP4', 'is_media' => true, 'media_type' => 'video'];
         default:
-            return ['icon' => '📁', 'color' => 'bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400', 'label' => 'Arquivo'];
+            return ['icon' => '📁', 'color' => 'bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400', 'label' => 'Arquivo', 'is_media' => false, 'media_type' => null];
     }
 }
 
@@ -120,9 +122,13 @@ if ($action === 'download') {
         'png'  => 'image/png',
         'bmp'  => 'image/bmp',
         'mp4'  => 'video/mp4',
+        'webm' => 'video/webm',
         'mp3'  => 'audio/mpeg',
-        'ogg'  => 'audio/ogg'
+        'ogg'  => 'audio/ogg',
+        'wav'  => 'audio/wav',
+        'm4a'  => 'audio/mp4'
     ];
+    $contentType = $mimeTypes[$ext] ?? 'application/octet-stream';
     // Modo de exibição: 'view' abre no navegador/player nativo, padrão 'download' baixa
     $mode = $_GET['mode'] ?? 'download';
     $disposition = ($mode === 'view') ? 'inline' : 'attachment';
@@ -131,15 +137,64 @@ if ($action === 'download') {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    
+
+    $fileSize = filesize($filePath);
+    $start = 0;
+    $end = $fileSize - 1;
+
     header('Content-Description: File Transfer');
     header('Content-Type: ' . $contentType);
+    header('Accept-Ranges: bytes');
     header('Content-Disposition: ' . $disposition . '; filename="' . rawurlencode(basename($file['original_name'])) . '"');
     header('Expires: 0');
     header('Cache-Control: must-revalidate');
     header('Pragma: public');
-    header('Content-Length: ' . filesize($filePath));
-    readfile($filePath);
+
+    // Suporte a HTTP Range (essencial para streaming de áudio e vídeo nos navegadores)
+    if (isset($_SERVER['HTTP_RANGE'])) {
+        $c_start = $start;
+        $c_end = $end;
+
+        list(, $range) = explode('=', $_SERVER['HTTP_RANGE'], 2);
+        if (strpos($range, ',') !== false) {
+            header('HTTP/1.1 416 Requested Range Not Satisfiable');
+            header("Content-Range: bytes $start-$end/$fileSize");
+            exit;
+        }
+        if ($range === '-') {
+            $c_start = $fileSize - substr($range, 1);
+        } else {
+            $range = explode('-', $range);
+            $c_start = (int)$range[0];
+            $c_end = (isset($range[1]) && is_numeric($range[1])) ? (int)$range[1] : $fileSize - 1;
+        }
+        $c_end = ($c_end > $end) ? $end : $c_end;
+        if ($c_start > $c_end || $c_start > $fileSize - 1 || $c_end >= $fileSize) {
+            header('HTTP/1.1 416 Requested Range Not Satisfiable');
+            header("Content-Range: bytes $start-$end/$fileSize");
+            exit;
+        }
+        $start = $c_start;
+        $end = $c_end;
+        $length = $end - $start + 1;
+        header('HTTP/1.1 206 Partial Content');
+        header("Content-Range: bytes $start-$end/$fileSize");
+        header("Content-Length: " . $length);
+    } else {
+        header("Content-Length: " . $fileSize);
+    }
+
+    $fp = fopen($filePath, 'rb');
+    fseek($fp, $start);
+    $buffer = 1024 * 64;
+    while (!feof($fp) && ($pos = ftell($fp)) <= $end) {
+        if ($pos + $buffer > $end) {
+            $buffer = $end - $pos + 1;
+        }
+        echo fread($fp, $buffer);
+        flush();
+    }
+    fclose($fp);
     exit;
 }
 
@@ -212,10 +267,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $error = 'O arquivo selecionado excede o tamanho máximo permitido de 20MB.';
         } else {
             $ext = strtolower(pathinfo($fileInfo['name'], PATHINFO_EXTENSION));
-            $allowedExtensions = ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'bmp', 'mp4', 'mp3', 'ogg'];
+            $allowedExtensions = ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'bmp', 'mp4', 'webm', 'mp3', 'ogg', 'wav', 'm4a'];
             
             if (!in_array($ext, $allowedExtensions)) {
-                $error = 'Extensão de arquivo não permitida. Envie apenas: PDF, TXT, JPG, JPEG, PNG, BMP, MP4, MP3 ou OGG.';
+                $error = 'Extensão de arquivo não permitida. Envie apenas: PDF, TXT, Imagens (JPG, PNG, BMP), Áudios (MP3, OGG, WAV) ou Vídeos (MP4, WEBM).';
             } else {
             // Garantir que a pasta do coral exista
             $choirStorageDir = $storageRoot . '/' . $choir_id;
@@ -424,24 +479,41 @@ require_once __DIR__ . '/layout_header.php';
                 $searchContent = mb_strtolower($f['title'] . ' ' . $f['original_name'] . ' ' . $f['file_type'] . ' ' . $target_text_search . ' ' . $f['uploader_name']);
             ?>
                 <div class="file-item-card bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700/60 transition-all hover:shadow-md"
-                     data-search="<?= htmlspecialchars($searchContent) ?>">
-                    
-                    <!-- Topo do Card: Ícone + Título Clicável (Abre/Baixa) -->
+                             <!-- Topo do Card: Ícone + Título Clicável (Abre/Baixa/Play) -->
                     <div class="flex items-start gap-3">
-                        <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
-                           class="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700 active:scale-95 transition-transform"
-                           title="Visualizar / Reproduzir">
-                            <?= $meta['icon'] ?>
-                        </a>
-                        <div class="flex-1 min-w-0">
-                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
-                               class="block font-bold text-slate-900 dark:text-white text-sm hover:text-coral-500 dark:hover:text-coral-400 leading-snug line-clamp-2">
-                                <?= htmlspecialchars($f['title']) ?>
-                            </a>
-                            <div class="text-[11px] text-slate-400 dark:text-slate-400 truncate mt-0.5" title="<?= htmlspecialchars($f['original_name']) ?>">
-                                📎 <?= htmlspecialchars($f['original_name']) ?>
+                        <?php if ($meta['is_media']): ?>
+                            <button type="button"
+                                    onclick="openMediaPlayer(<?= $f['id'] ?>, <?= htmlspecialchars(json_encode($f['title']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($f['original_name']), ENT_QUOTES) ?>, '<?= $meta['media_type'] ?>', '<?= htmlspecialchars($meta['label'], ENT_QUOTES) ?>')"
+                                    class="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl bg-coral-50 text-coral-600 dark:bg-coral-950/30 dark:text-coral-400 border border-coral-200/60 dark:border-coral-800/60 active:scale-95 transition-transform cursor-pointer"
+                                    title="Reproduzir">
+                                ▶️
+                            </button>
+                            <div class="flex-1 min-w-0">
+                                <button type="button"
+                                        onclick="openMediaPlayer(<?= $f['id'] ?>, <?= htmlspecialchars(json_encode($f['title']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($f['original_name']), ENT_QUOTES) ?>, '<?= $meta['media_type'] ?>', '<?= htmlspecialchars($meta['label'], ENT_QUOTES) ?>')"
+                                        class="block text-left font-bold text-slate-900 dark:text-white text-sm hover:text-coral-500 dark:hover:text-coral-400 leading-snug line-clamp-2 cursor-pointer">
+                                    <?= htmlspecialchars($f['title']) ?>
+                                </button>
+                                <div class="text-[11px] text-slate-400 dark:text-slate-400 truncate mt-0.5" title="<?= htmlspecialchars($f['original_name']) ?>">
+                                    📎 <?= htmlspecialchars($f['original_name']) ?>
+                                </div>
                             </div>
-                        </div>
+                        <?php else: ?>
+                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                               class="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700 active:scale-95 transition-transform"
+                               title="Visualizar">
+                                <?= $meta['icon'] ?>
+                            </a>
+                            <div class="flex-1 min-w-0">
+                                <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                   class="block font-bold text-slate-900 dark:text-white text-sm hover:text-coral-500 dark:hover:text-coral-400 leading-snug line-clamp-2">
+                                    <?= htmlspecialchars($f['title']) ?>
+                                </a>
+                                <div class="text-[11px] text-slate-400 dark:text-slate-400 truncate mt-0.5" title="<?= htmlspecialchars($f['original_name']) ?>">
+                                    📎 <?= htmlspecialchars($f['original_name']) ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Informações secundárias / Metadados -->
@@ -464,11 +536,20 @@ require_once __DIR__ . '/layout_header.php';
                         </div>
 
                         <div class="flex items-center gap-2 shrink-0">
-                            <!-- Abrir / Visualizar -->
-                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
-                               class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold text-xs transition-colors">
-                                <span>👁️</span> Abrir
-                            </a>
+                            <!-- Abrir / Play -->
+                            <?php if ($meta['is_media']): ?>
+                                <button type="button"
+                                        onclick="openMediaPlayer(<?= $f['id'] ?>, <?= htmlspecialchars(json_encode($f['title']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($f['original_name']), ENT_QUOTES) ?>, '<?= $meta['media_type'] ?>', '<?= htmlspecialchars($meta['label'], ENT_QUOTES) ?>')"
+                                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-600 text-white font-semibold text-xs shadow-sm transition-all active:scale-95 cursor-pointer"
+                                        title="Reproduzir">
+                                    <span>▶️</span> Play
+                                </button>
+                            <?php else: ?>
+                                <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold text-xs transition-colors">
+                                    <span>👁️</span> Abrir
+                                </a>
+                            <?php endif; ?>
 
                             <!-- Baixar diretamente -->
                             <a href="files.php?action=download&mode=download&id=<?= $f['id'] ?>"
@@ -528,19 +609,37 @@ require_once __DIR__ . '/layout_header.php';
                             <tr class="file-item-row hover:bg-slate-50 dark:hover:bg-slate-800/50" data-search="<?= htmlspecialchars($searchContent) ?>">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
                                     <div class="flex items-center gap-3">
-                                        <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
-                                           class="text-2xl p-1 bg-slate-50 dark:bg-slate-900 rounded-xl hover:scale-110 transition-transform" title="Abrir / Visualizar">
-                                            <?= $meta['icon'] ?>
-                                        </a>
-                                        <div>
-                                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
-                                               class="font-bold text-slate-900 dark:text-white hover:text-coral-500 dark:hover:text-coral-400 transition-colors">
-                                                <?= htmlspecialchars($f['title']) ?>
-                                            </a>
-                                            <div class="text-[10px] text-slate-400 truncate max-w-xs" title="<?= htmlspecialchars($f['original_name']) ?>">
-                                                <?= htmlspecialchars($f['original_name']) ?>
+                                        <?php if ($meta['is_media']): ?>
+                                            <button type="button"
+                                                    onclick="openMediaPlayer(<?= $f['id'] ?>, <?= htmlspecialchars(json_encode($f['title']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($f['original_name']), ENT_QUOTES) ?>, '<?= $meta['media_type'] ?>', '<?= htmlspecialchars($meta['label'], ENT_QUOTES) ?>')"
+                                                    class="text-2xl p-1 bg-coral-50 text-coral-600 dark:bg-coral-950/30 dark:text-coral-400 rounded-xl hover:scale-110 transition-transform cursor-pointer" title="Reproduzir">
+                                                <?= $meta['icon'] ?>
+                                            </button>
+                                            <div>
+                                                <button type="button"
+                                                        onclick="openMediaPlayer(<?= $f['id'] ?>, <?= htmlspecialchars(json_encode($f['title']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($f['original_name']), ENT_QUOTES) ?>, '<?= $meta['media_type'] ?>', '<?= htmlspecialchars($meta['label'], ENT_QUOTES) ?>')"
+                                                        class="text-left font-bold text-slate-900 dark:text-white hover:text-coral-500 dark:hover:text-coral-400 transition-colors cursor-pointer">
+                                                    <?= htmlspecialchars($f['title']) ?>
+                                                </button>
+                                                <div class="text-[10px] text-slate-400 truncate max-w-xs" title="<?= htmlspecialchars($f['original_name']) ?>">
+                                                    <?= htmlspecialchars($f['original_name']) ?>
+                                                </div>
                                             </div>
-                                        </div>
+                                        <?php else: ?>
+                                            <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                               class="text-2xl p-1 bg-slate-50 dark:bg-slate-900 rounded-xl hover:scale-110 transition-transform" title="Abrir / Visualizar">
+                                                <?= $meta['icon'] ?>
+                                            </a>
+                                            <div>
+                                                <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                                   class="font-bold text-slate-900 dark:text-white hover:text-coral-500 dark:hover:text-coral-400 transition-colors">
+                                                    <?= htmlspecialchars($f['title']) ?>
+                                                </a>
+                                                <div class="text-[10px] text-slate-400 truncate max-w-xs" title="<?= htmlspecialchars($f['original_name']) ?>">
+                                                    <?= htmlspecialchars($f['original_name']) ?>
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-xs">
@@ -559,11 +658,20 @@ require_once __DIR__ . '/layout_header.php';
                                     <span class="block text-[10px] text-slate-400 mt-0.5"><?= date('d/m/Y H:i', strtotime($f['created_at'])) ?></span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-semibold space-x-1.5">
-                                    <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
-                                       class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300 transition-colors"
-                                       title="Abrir no navegador">
-                                        👁️ Abrir
-                                    </a>
+                                    <?php if ($meta['is_media']): ?>
+                                        <button type="button"
+                                                onclick="openMediaPlayer(<?= $f['id'] ?>, <?= htmlspecialchars(json_encode($f['title']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($f['original_name']), ENT_QUOTES) ?>, '<?= $meta['media_type'] ?>', '<?= htmlspecialchars($meta['label'], ENT_QUOTES) ?>')"
+                                                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-600 text-white font-semibold text-xs shadow-sm transition-all active:scale-95 cursor-pointer"
+                                                title="Reproduzir">
+                                            <span>▶️</span> Play
+                                        </button>
+                                    <?php else: ?>
+                                        <a href="files.php?action=download&mode=view&id=<?= $f['id'] ?>" target="_blank"
+                                           class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300 transition-colors"
+                                           title="Abrir no navegador">
+                                            👁️ Abrir
+                                        </a>
+                                    <?php endif; ?>
                                     
                                     <a href="files.php?action=download&mode=download&id=<?= $f['id'] ?>"
                                        class="px-2.5 py-1.5 rounded-lg bg-coral-50 hover:bg-coral-100 text-coral-600 dark:bg-coral-950/20 dark:text-coral-400 transition-colors"
@@ -615,10 +723,10 @@ require_once __DIR__ . '/layout_header.php';
                     
                     <div>
                         <label for="shared_file" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Arquivo * (Máx. 20 MB)</label>
-                        <input type="file" name="shared_file" id="shared_file" required accept=".pdf,.txt,.jpg,.jpeg,.png,.bmp,.mp4,.mp3,.ogg"
+                        <input type="file" name="shared_file" id="shared_file" required accept=".pdf,.txt,.jpg,.jpeg,.png,.bmp,.mp4,.webm,.mp3,.ogg,.wav,.m4a"
                                onchange="validateFileSize(this)"
                                class="w-full px-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-coral-100 file:text-coral-700 hover:file:bg-coral-200">
-                        <p class="text-[10px] text-slate-400 mt-1">Formatos aceitos: Documentos (PDF, TXT), Imagens (JPG, JPEG, PNG, BMP), Músicas (MP3, OGG) e Vídeos (MP4). Tamanho máximo: <strong>20 MB</strong>.</p>
+                        <p class="text-[10px] text-slate-400 mt-1">Formatos aceitos: Documentos (PDF, TXT), Imagens (JPG, PNG, BMP), Áudios (MP3, OGG, WAV) e Vídeos (MP4, WEBM). Tamanho máximo: <strong>20 MB</strong>.</p>
                     </div>
                     
                     <div class="border-t border-slate-100 dark:border-slate-700/50 pt-4">
@@ -707,7 +815,155 @@ require_once __DIR__ . '/layout_header.php';
     </script>
 <?php endif; ?>
 
-    <script>
+<!-- ==============================================
+     MODAL MINI PLAYER DE ÁUDIO E VÍDEO
+     ============================================== -->
+<div id="modal-media-player" class="fixed inset-0 z-50 overflow-y-auto hidden" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <!-- Backdrop com blur -->
+        <div class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity" onclick="closeMediaPlayer()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+
+        <!-- Card do Mini Player -->
+        <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle w-full max-w-xl border border-slate-100 dark:border-slate-700/60 p-5 sm:p-6 relative z-10">
+            <!-- Topo: Ícone, Título, Badge e Botão Fechar -->
+            <div class="flex items-start justify-between gap-3 mb-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span id="player-icon" class="w-10 h-10 rounded-2xl bg-coral-50 dark:bg-coral-950/40 text-coral-600 dark:text-coral-400 flex items-center justify-center text-xl shrink-0">
+                        🎵
+                    </span>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <h3 id="player-title" class="font-bold font-outfit text-slate-900 dark:text-white text-base truncate">
+                                Nome do Arquivo
+                            </h3>
+                            <span id="player-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 uppercase tracking-wider shrink-0">
+                                ÁUDIO
+                            </span>
+                        </div>
+                        <p id="player-filename" class="text-xs text-slate-400 truncate mt-0.5">
+                            arquivo.mp3
+                        </p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeMediaPlayer()" 
+                        class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors shrink-0"
+                        title="Fechar player (Esc)">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Container do Player de Vídeo -->
+            <div id="player-video-container" class="hidden mb-4">
+                <div class="bg-black rounded-2xl overflow-hidden shadow-inner flex items-center justify-center aspect-video max-h-[60vh]">
+                    <video id="player-video-element" controls playsinline class="w-full h-full object-contain">
+                        Seu navegador não suporta a tag de vídeo.
+                    </video>
+                </div>
+            </div>
+
+            <!-- Container do Player de Áudio -->
+            <div id="player-audio-container" class="hidden mb-4">
+                <div class="p-6 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-slate-50 dark:from-slate-900/60 dark:to-indigo-950/20 border border-indigo-100/60 dark:border-indigo-900/40 flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-coral-500 to-rose-500 text-white flex items-center justify-center text-2xl shadow-lg shadow-coral-500/25 mb-4 animate-pulse">
+                        🎵
+                    </div>
+                    <audio id="player-audio-element" controls class="w-full">
+                        Seu navegador não suporta o elemento de áudio.
+                    </audio>
+                </div>
+            </div>
+
+            <!-- Rodapé: Ações (Baixar, Concluído) -->
+            <div class="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                <a id="player-download-btn" href="#"
+                   class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors">
+                    <span>📥</span> Baixar arquivo
+                </a>
+                <button type="button" onclick="closeMediaPlayer()"
+                        class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors">
+                    Concluído
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openMediaPlayer(id, title, originalName, mediaType, label) {
+    const modal = document.getElementById('modal-media-player');
+    const titleEl = document.getElementById('player-title');
+    const filenameEl = document.getElementById('player-filename');
+    const badgeEl = document.getElementById('player-badge');
+    const iconEl = document.getElementById('player-icon');
+    const downloadBtn = document.getElementById('player-download-btn');
+    
+    const videoContainer = document.getElementById('player-video-container');
+    const audioContainer = document.getElementById('player-audio-container');
+    const videoEl = document.getElementById('player-video-element');
+    const audioEl = document.getElementById('player-audio-element');
+
+    if (!modal) return;
+
+    titleEl.textContent = title;
+    filenameEl.textContent = '📎 ' + originalName;
+    badgeEl.textContent = label || (mediaType === 'video' ? 'Vídeo' : 'Áudio');
+    iconEl.textContent = mediaType === 'video' ? '🎬' : '🎵';
+    downloadBtn.href = 'files.php?action=download&mode=download&id=' + id;
+
+    const streamUrl = 'files.php?action=download&mode=view&id=' + id;
+
+    if (mediaType === 'video') {
+        audioEl.pause();
+        audioEl.src = '';
+        audioContainer.classList.add('hidden');
+
+        videoContainer.classList.remove('hidden');
+        videoEl.src = streamUrl;
+        videoEl.load();
+        videoEl.play().catch(e => console.log('Autoplay prevenido:', e));
+    } else {
+        videoEl.pause();
+        videoEl.src = '';
+        videoContainer.classList.add('hidden');
+
+        audioContainer.classList.remove('hidden');
+        audioEl.src = streamUrl;
+        audioEl.load();
+        audioEl.play().catch(e => console.log('Autoplay prevenido:', e));
+    }
+
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMediaPlayer() {
+    const modal = document.getElementById('modal-media-player');
+    const videoEl = document.getElementById('player-video-element');
+    const audioEl = document.getElementById('player-audio-element');
+
+    if (videoEl) {
+        videoEl.pause();
+        videoEl.src = '';
+    }
+    if (audioEl) {
+        audioEl.pause();
+        audioEl.src = '';
+    }
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('modal-media-player');
+        if (modal && !modal.classList.contains('hidden')) {
+            closeMediaPlayer();
+        }
+    }
+});
     function filterFilesList() {
         const input = document.getElementById('file_search_input');
         const clearBtn = document.getElementById('file_search_clear');
