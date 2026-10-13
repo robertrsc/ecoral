@@ -460,7 +460,7 @@ require_once __DIR__ . '/layout_header.php';
             </div>
 
             <!-- Formulário Principal do Wizard -->
-            <form id="wizard-receipt-form" action="submit-receipt.php" method="POST" enctype="multipart/form-data" class="p-5 sm:p-8">
+            <form id="wizard-receipt-form" action="submit-receipt.php" method="POST" enctype="multipart/form-data" novalidate class="p-5 sm:p-8">
                 <input type="hidden" name="action" value="process_wizard_receipt">
 
                 <!-- ==============================================================
@@ -481,7 +481,7 @@ require_once __DIR__ . '/layout_header.php';
                             Anexar Comprovante (JPG, PNG ou PDF) *
                         </label>
                         <div class="relative border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-coral-400 dark:hover:border-coral-500 rounded-2xl p-5 text-center transition-all bg-slate-50/50 dark:bg-slate-900/30 group">
-                            <input type="file" name="receipt_file" id="receipt_file" required accept=".jpg,.jpeg,.png,.pdf"
+                            <input type="file" name="receipt_file" id="receipt_file" accept=".jpg,.jpeg,.png,.pdf"
                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                    onchange="handleReceiptFileChange(this)">
                             <div id="file-dropzone-content" class="space-y-2 pointer-events-none">
@@ -509,7 +509,7 @@ require_once __DIR__ . '/layout_header.php';
                         </label>
                         <div class="relative">
                             <span class="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm text-slate-400">R$</span>
-                            <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" name="amount" id="amount" required
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" name="amount" id="amount"
                                    data-currency-mask
                                    value="<?= $preselectAmount > 0 ? number_format($preselectAmount, 2, ',', '.') : '' ?>"
                                    class="w-full pl-11 pr-4 py-3 text-base font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
@@ -859,7 +859,7 @@ require_once __DIR__ . '/layout_header.php';
                                 class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer">
                             ← Voltar
                         </button>
-                        <button type="submit" id="btn-submit-final"
+                        <button type="button" id="btn-submit-final" onclick="submitWizardForm()"
                                 class="px-8 py-3 bg-gradient-to-r from-coral-500 to-rose-600 hover:from-coral-600 hover:to-rose-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-coral-500/25 transition-all flex items-center gap-2 cursor-pointer hover:scale-[1.02]">
                             <span>Finalizar e Enviar Comprovante</span>
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
@@ -1343,41 +1343,47 @@ function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
+function submitWizardForm() {
+    const fileInput = document.getElementById('receipt_file');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert('Por favor, anexe o comprovante de pagamento no Passo 1 antes de finalizar.');
+        goToStep(1);
+        return;
+    }
+
+    const declared = getDeclaredAmount();
+    if (declared <= 0) {
+        alert('O valor do pagamento deve ser maior que zero.');
+        goToStep(1);
+        return;
+    }
+
+    let sumSelected = 0;
+    document.querySelectorAll('.wizard-billing-checkbox:checked').forEach(cb => {
+        sumSelected += parseFloat(cb.getAttribute('data-amount')) || 0;
+    });
+
+    if (sumSelected > declared + 0.0001) {
+        alert('A soma das cobranças excede o valor informado do comprovante.');
+        goToStep(3);
+        return;
+    }
+
+    const form = document.getElementById('wizard-receipt-form');
+    if (!form) return;
+
+    const btn = document.getElementById('btn-submit-final');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">🔄</span> Enviando...';
+    }
+
+    form.submit();
+}
+
 // Inicialização automática
 document.addEventListener('DOMContentLoaded', function() {
     recalculateWizardConsumption();
-    
-    // Tratativa de submit do formulário
-    const form = document.getElementById('wizard-receipt-form');
-    if (form) {
-        form.addEventListener('submit', function(e) {
-            const declared = getDeclaredAmount();
-            let sumSelected = 0;
-            document.querySelectorAll('.wizard-billing-checkbox:checked').forEach(cb => {
-                sumSelected += parseFloat(cb.getAttribute('data-amount')) || 0;
-            });
-            
-            if (declared <= 0) {
-                e.preventDefault();
-                alert('O valor do pagamento deve ser maior que zero.');
-                goToStep(1);
-                return;
-            }
-            
-            if (sumSelected > declared + 0.0001) {
-                e.preventDefault();
-                alert('A soma das cobranças excede o valor informado do comprovante.');
-                goToStep(3);
-                return;
-            }
-            
-            const btn = document.getElementById('btn-submit-final');
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<span class="inline-block animate-spin mr-1">🔄</span> Enviando...';
-            }
-        });
-    }
 });
 </script>
 
