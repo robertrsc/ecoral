@@ -90,6 +90,10 @@
         });
 
         input.addEventListener('keydown', function (e) {
+            // Em navegadores mobile (ex: Firefox Android), e.key frequentemente retorna 'Unidentified' ou 'Process' devido ao IME/teclado virtual
+            if (!e.key || e.key === 'Unidentified' || e.key === 'Process') {
+                return;
+            }
             // Permite: Backspace, Delete, Tab, Escape, Enter, setas, Home, End
             const allowed = [
                 'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',

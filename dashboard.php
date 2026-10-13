@@ -508,6 +508,23 @@ if (is_superadmin()) {
         </div>
     <?php endif; ?>
 
+    <!-- Botão Fino Pix Coral (ocupa as 2 colunas no mobile) -->
+    <div class="mb-3">
+        <button type="button" id="btn-copy-pix-coral" onclick="copyPixCoral('83853259000102')"
+                class="w-full group px-4 py-2 rounded-xl border border-coral-200 dark:border-coral-800/60 bg-gradient-to-r from-coral-50/90 via-rose-50/70 to-coral-50/90 dark:from-coral-950/40 dark:via-rose-950/20 dark:to-coral-950/40 hover:from-coral-100 hover:to-rose-100 dark:hover:from-coral-900/40 dark:hover:to-rose-900/40 shadow-xs hover:shadow-sm transition-all flex flex-col items-center justify-center cursor-pointer select-none">
+            <div class="flex items-center justify-center gap-2 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm">
+                <span class="text-coral-500 font-extrabold text-sm sm:text-base">❖</span>
+                <span id="pix-coral-text">Pix Coral: <strong class="font-mono tracking-wide text-coral-600 dark:text-coral-400">83853259000102</strong></span>
+                <svg id="pix-copy-icon" class="w-3.5 h-3.5 text-slate-400 group-hover:text-coral-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <span id="pix-coral-help" class="text-[10px] text-slate-400 dark:text-slate-400/80 group-hover:text-coral-600 dark:group-hover:text-coral-300 font-medium transition-colors">
+                clique para copiar
+            </span>
+        </button>
+    </div>
+
     <!-- Botões grandes estilo Metro -->
     <nav aria-label="Menu principal" class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-8">
         <?php foreach ($metroTiles as $t): ?>
@@ -882,6 +899,56 @@ function formatDateString(dateStr) {
         return formatted;
     } catch(e) {
         return dateStr;
+    }
+}
+
+function copyPixCoral(pixKey) {
+    if (!pixKey) pixKey = '83853259000102';
+    const helpEl = document.getElementById('pix-coral-help');
+    
+    const setFeedback = (msg, success = true) => {
+        if (!helpEl) return;
+        helpEl.textContent = msg;
+        if (success) {
+            helpEl.classList.remove('text-slate-400');
+            helpEl.classList.add('text-emerald-600', 'dark:text-emerald-400', 'font-bold');
+        }
+        setTimeout(() => {
+            helpEl.textContent = 'clique para copiar';
+            helpEl.classList.remove('text-emerald-600', 'dark:text-emerald-400', 'font-bold');
+            helpEl.classList.add('text-slate-400');
+        }, 2500);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pixKey).then(() => {
+            setFeedback('✓ Chave copiada com sucesso!');
+        }).catch(() => {
+            fallbackCopy(pixKey);
+        });
+    } else {
+        fallbackCopy(pixKey);
+    }
+
+    function fallbackCopy(text) {
+        try {
+            const tempInput = document.createElement('textarea');
+            tempInput.value = text;
+            tempInput.style.position = 'fixed';
+            tempInput.style.opacity = '0';
+            document.body.appendChild(tempInput);
+            tempInput.focus();
+            tempInput.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            if (successful) {
+                setFeedback('✓ Chave copiada com sucesso!');
+            } else {
+                setFeedback('Selecione e copie manualmente: ' + text, false);
+            }
+        } catch (err) {
+            prompt('Copie a chave Pix:', text);
+        }
     }
 }
 </script>

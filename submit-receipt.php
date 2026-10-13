@@ -509,7 +509,7 @@ require_once __DIR__ . '/layout_header.php';
                         </label>
                         <div class="relative">
                             <span class="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm text-slate-400">R$</span>
-                            <input type="text" inputmode="numeric" name="amount" id="amount" required
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" name="amount" id="amount" required
                                    data-currency-mask
                                    value="<?= $preselectAmount > 0 ? number_format($preselectAmount, 2, ',', '.') : '' ?>"
                                    class="w-full pl-11 pr-4 py-3 text-base font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
@@ -564,12 +564,12 @@ require_once __DIR__ . '/layout_header.php';
                             <label for="shared_member_code" class="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
                                 Código do Coralista Beneficiado (Ex: B15612) *
                             </label>
-                            <div class="flex gap-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 <input type="text" name="shared_member_code" id="shared_member_code" placeholder="Ex: B15612"
-                                       class="flex-1 px-4 py-2.5 text-xs font-bold uppercase bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all tracking-wider"
+                                       class="w-full px-4 py-3 sm:py-2.5 text-xs font-bold uppercase bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all tracking-wider"
                                        onkeydown="if(event.key==='Enter'){event.preventDefault(); fetchSharedMember();}">
                                 <button type="button" onclick="fetchSharedMember()" id="btn-search-member"
-                                        class="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 font-semibold rounded-xl text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+                                        class="w-full px-5 py-3 sm:py-2.5 bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 font-semibold rounded-xl text-xs shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
                                     <span>🔍</span> Buscar Coralista
                                 </button>
                             </div>
