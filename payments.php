@@ -705,113 +705,48 @@ require_once __DIR__ . '/layout_header.php';
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
     <!-- ==============================================
-         1. PAINEL DO CANTOR (MEMBRO) - FORMULÁRIO DE ENVIO
+         1. PAINEL DO CANTOR (MEMBRO) - CARD DO NOVO WIZARD DE ENVIO
          ============================================== -->
     <?php if ($user['role'] === 'membro'): ?>
         <div id="card-enviar-comprovante" class="lg:col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700/50 h-fit transition-all duration-200">
-            <!-- Cabeçalho expansível / collapsável -->
-            <button type="button"
-                    id="toggle-upload-card-btn"
-                    onclick="toggleUploadCard()"
-                    aria-expanded="<?= $collapseUploadCard ? 'false' : 'true' ?>"
-                    aria-controls="upload-card-body"
-                    class="w-full flex items-center justify-between gap-3 text-left focus:outline-none group select-none cursor-pointer">
-                <div class="flex items-center gap-2.5 min-w-0">
-                    <span class="w-8 h-8 rounded-xl bg-coral-50 dark:bg-coral-950/40 text-coral-600 dark:text-coral-400 flex items-center justify-center text-base shrink-0 group-hover:scale-105 transition-transform">
-                        📤
-                    </span>
-                    <div class="min-w-0">
-                        <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white leading-tight">Enviar Comprovante</h2>
-                        <p id="upload-card-subtitle" class="text-[11px] text-slate-400 leading-tight truncate mt-0.5">
-                            <?= $collapseUploadCard ? 'Toque para expandir e enviar' : 'Anexe seu comprovante de pagamento' ?>
-                        </p>
-                    </div>
+            <div class="flex items-center gap-3 mb-3">
+                <span class="w-10 h-10 rounded-2xl bg-coral-50 dark:bg-coral-950/40 text-coral-600 dark:text-coral-400 flex items-center justify-center text-xl shrink-0">
+                    📤
+                </span>
+                <div>
+                    <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white leading-tight">Enviar Comprovante</h2>
+                    <p class="text-[11px] text-slate-400 leading-tight mt-0.5">Novo Wizard passo a passo</p>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
-                    <span id="upload-card-badge" class="<?= $collapseUploadCard ? '' : 'hidden' ?> px-2 py-0.5 rounded-full text-[10px] font-semibold bg-coral-50 text-coral-600 dark:bg-coral-950/40 dark:text-coral-400 border border-coral-200/50 dark:border-coral-800/50">
-                        Expandir
-                    </span>
-                    <span class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 group-hover:bg-slate-100 dark:group-hover:bg-slate-700/50 transition-colors">
-                        <svg id="upload-card-chevron" class="w-4 h-4 transition-transform duration-200 <?= $collapseUploadCard ? '-rotate-90' : 'rotate-0' ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                    </span>
-                </div>
-            </button>
-            
-            <div id="upload-card-body" class="<?= $collapseUploadCard ? 'hidden' : '' ?> pt-4 mt-3 border-t border-slate-100 dark:border-slate-700/50">
-                <form action="payments.php" method="POST" enctype="multipart/form-data" class="space-y-4">
-                    <input type="hidden" name="action" value="upload_receipt">
-                    
-                    <div>
-                        <label for="amount" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Valor Pago (R$) *</label>
-                        <input type="text" inputmode="numeric" name="amount" id="amount" required
-                                data-currency-mask
-                                class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
-                                placeholder="0,00">
-                    </div>
-
-                    <div>
-                        <label for="receipt_file" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Arquivo Comprovante (JPG, PNG ou PDF) *</label>
-                        <input type="file" name="receipt_file" id="receipt_file" required accept=".jpg,.jpeg,.png,.pdf"
-                                class="w-full px-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-coral-100 file:text-coral-700 hover:file:bg-coral-200">
-                    </div>
-
-                    <div>
-                        <label for="description" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Observações / Mensagem</label>
-                        <textarea name="description" id="description" rows="2"
-                                  class="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white transition-all"
-                                  placeholder="Ex: Mensalidade paga via pix."></textarea>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Associar a quais cobranças em aberto?</label>
-                        <?php if (empty($selectableBillings)): ?>
-                            <p class="text-[10px] text-slate-400">Nenhuma cobrança em aberto aguardando envio de comprovante. O valor será creditado em seu saldo!</p>
-                        <?php else: ?>
-                            <div class="border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2 max-h-36 overflow-y-auto bg-slate-50 dark:bg-slate-900/40">
-                                <?php foreach ($selectableBillings as $mob): ?>
-                                    <label class="flex items-center text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                                        <input type="checkbox" name="selected_billings[]" value="<?= $mob['id'] ?>" id="billing-cb-<?= $mob['id'] ?>" data-amount="<?= floatval($mob['remaining_amount']) ?>"
-                                               class="w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 billing-checkbox">
-                                        <span class="ml-2 font-medium">
-                                            <?= htmlspecialchars($mob['title']) ?> (<?= format_currency($mob['remaining_amount']) ?>)
-                                        </span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                            <p class="text-[9px] text-slate-400 mt-1">Obs: Caso o valor do comprovante supere os itens marcados, a diferença irá para seu saldo.</p>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="pt-4 border-t border-slate-100 dark:border-slate-700/50">
-                        <label for="other_member_code" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Pagar para outro cantor? Informe o código:</label>
-                        <div class="flex gap-2">
-                            <input type="text" id="other_member_code" placeholder="Ex: T1029"
-                                   class="flex-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white uppercase transition-all">
-                            <button type="button" onclick="searchOtherMember()"
-                                    class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-lg text-xs transition-all">
-                                Buscar
-                            </button>
-                        </div>
-                        <div id="other_member_result" class="mt-3 hidden p-3 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900/40 space-y-2">
-                            <!-- Conteúdo dinâmico via JS -->
-                        </div>
-                    </div>
-
-                    <div id="billing_sum_container" class="hidden p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-all">
-                        Soma dos itens selecionados: <span id="billing_sum_val" class="text-coral-500 font-bold">R$ 0,00</span>
-                        <p class="text-[10px] font-normal text-red-500 dark:text-red-400 mt-1 hidden" id="amount_warning">
-                            ⚠️ O valor declarado é menor do que a soma das cobranças selecionadas!
-                        </p>
-                    </div>
-
-                    <button type="submit" 
-                            class="w-full py-2.5 px-4 bg-coral-500 hover:bg-coral-600 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-coral-400 focus:ring-offset-2 transition-all text-xs">
-                        Enviar Comprovante
-                    </button>
-                </form>
             </div>
+            
+            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4">
+                Anexe seu comprovante de Pix ou transferência, divida ou compartilhe com outro coralista e selecione as cobranças em aberto de forma simples e intuitiva.
+            </p>
+
+            <div class="space-y-2 mb-4 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-full bg-coral-100 text-coral-600 dark:bg-coral-950 dark:text-coral-400 font-bold flex items-center justify-center text-[9px]">1</span>
+                    <span>Anexe o arquivo e declare o valor</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-bold flex items-center justify-center text-[9px]">2</span>
+                    <span>Pagamento individual ou compartilhado</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-bold flex items-center justify-center text-[9px]">3</span>
+                    <span>Selecione cobranças com consumo em tempo real</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-bold flex items-center justify-center text-[9px]">4</span>
+                    <span>Resumo, observações e finalização</span>
+                </div>
+            </div>
+
+            <a href="submit-receipt.php" 
+               class="w-full py-3 px-4 bg-gradient-to-r from-coral-500 to-rose-600 hover:from-coral-600 hover:to-rose-700 text-white font-bold rounded-xl shadow-md shadow-coral-500/20 focus:outline-none focus:ring-2 focus:ring-coral-400 transition-all text-xs flex items-center justify-center gap-2 group hover:scale-[1.01]">
+                <span>Abrir Envio de Comprovante</span>
+                <svg class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </a>
         </div>
     <?php endif; ?>
 
@@ -846,12 +781,18 @@ require_once __DIR__ . '/layout_header.php';
                         </p>
                     </div>
                     
-                    <?php if ($memberBalance > 0 && !empty($selectableBillings)): ?>
-                        <button type="button" onclick="openBalanceModal()"
-                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto cursor-pointer">
-                            <span>💰</span> Pagar com saldo (<?= format_currency($memberBalance) ?>)
-                        </button>
-                    <?php endif; ?>
+                    <div class="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                        <a href="submit-receipt.php"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-600 text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer">
+                            <span>📤</span> Enviar Comprovante
+                        </a>
+                        <?php if ($memberBalance > 0 && !empty($selectableBillings)): ?>
+                            <button type="button" onclick="openBalanceModal()"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer">
+                                <span>💰</span> Pagar com saldo (<?= format_currency($memberBalance) ?>)
+                            </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <?php if (empty($myOpenBillings)): ?>
@@ -1331,42 +1272,8 @@ function closeBalanceModal() {
 }
 
 function selectBillingToPay(billingId, amount) {
-    // 1. Garante que o card de upload está aberto
-    const uploadBody = document.getElementById('upload-card-body');
-    if (uploadBody && uploadBody.classList.contains('hidden')) {
-        toggleUploadCard();
-    }
-    
-    // 2. Marca apenas a cobrança selecionada
-    const targetCheckbox = document.getElementById('billing-cb-' + billingId);
-    document.querySelectorAll('.billing-checkbox').forEach(cb => {
-        cb.checked = (cb === targetCheckbox);
-    });
-    
-    // 3. Preenche o valor (dispara evento input para ativar máscara de moeda)
-    const amountInput = document.getElementById('amount');
-    if (amountInput) {
-        const cents = Math.round(parseFloat(amount) * 100);
-        amountInput.value = cents > 0 ? cents.toString() : '';
-        amountInput.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    const hiddenAmount = document.querySelector('input[type="hidden"][name="amount"]');
-    if (hiddenAmount) {
-        hiddenAmount.value = parseFloat(amount).toFixed(2);
-    }
-    
-    // 4. Atualiza o totalizador
-    updateSelectedTotal();
-    
-    // 5. Rola suavemente até o formulário e foca no arquivo
-    const uploadCard = document.getElementById('card-enviar-comprovante');
-    if (uploadCard) {
-        uploadCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    const fileInput = document.getElementById('receipt_file');
-    if (fileInput) {
-        setTimeout(() => fileInput.focus(), 350);
-    }
+    // Redireciona diretamente para o novo Wizard de Envio de Comprovante com o item e valor pré-selecionados
+    window.location.href = 'submit-receipt.php?billing_id=' + encodeURIComponent(billingId) + '&amount=' + encodeURIComponent(amount);
 }
 
 function searchOtherMember() {
