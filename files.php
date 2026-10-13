@@ -416,23 +416,49 @@ require_once __DIR__ . '/layout_header.php';
     </div>
 <?php else: ?>
     
-    <!-- Barra de Pesquisa e Filtros -->
-    <div class="mb-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-        <div class="relative flex-1">
-            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                🔍
-            </span>
-            <input type="text" id="file_search_input" oninput="filterFilesList()"
-                   placeholder="Pesquisar por título, nome do arquivo ou naipe..."
-                   class="w-full pl-10 pr-10 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white shadow-sm transition-all">
-            <button id="file_search_clear" onclick="clearFileSearch()" type="button"
-                    class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs">
-                ✕
-            </button>
+    <!-- Barra de Pesquisa e Filtros Rápidos -->
+    <div class="mb-5 space-y-3">
+        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+            <div class="relative flex-1">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    🔍
+                </span>
+                <input type="text" id="file_search_input" oninput="filterFilesList()"
+                       placeholder="Pesquisar por título, nome do arquivo ou naipe..."
+                       class="w-full pl-10 pr-10 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-coral-500 dark:text-white shadow-xs transition-all">
+                <button id="file_search_clear" onclick="clearFileSearch()" type="button"
+                        class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer">
+                    ✕
+                </button>
+            </div>
+            <div id="file_count_badge" class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 self-end sm:self-center px-1 shrink-0">
+                <span>Exibindo:</span>
+                <span class="font-bold text-slate-800 dark:text-slate-100" id="file_count_num"><?= count($files) ?></span> de <?= count($files) ?> arquivo(s)
+            </div>
         </div>
-        <div id="file_count_badge" class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 self-end sm:self-center px-1">
-            <span>Total:</span>
-            <span class="font-bold text-slate-700 dark:text-slate-200" id="file_count_num"><?= count($files) ?></span> arquivo(s)
+
+        <!-- Filtros por Categoria de Arquivo -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1" id="file_type_filters">
+            <button type="button" onclick="setFileTypeFilter('all')" data-filter-type="all"
+                    class="file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-coral-500 text-white shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <span>📁 Todos</span>
+            </button>
+            <button type="button" onclick="setFileTypeFilter('pdf')" data-filter-type="pdf"
+                    class="file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <span>📄 Partituras / PDF</span>
+            </button>
+            <button type="button" onclick="setFileTypeFilter('audio')" data-filter-type="audio"
+                    class="file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <span>🎵 Áudios / Ensaio</span>
+            </button>
+            <button type="button" onclick="setFileTypeFilter('video')" data-filter-type="video"
+                    class="file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <span>🎬 Vídeos</span>
+            </button>
+            <button type="button" onclick="setFileTypeFilter('image')" data-filter-type="image"
+                    class="file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <span>🖼️ Imagens</span>
+            </button>
         </div>
     </div>
 
@@ -477,9 +503,11 @@ require_once __DIR__ . '/layout_header.php';
                 }
                 
                 $searchContent = mb_strtolower($f['title'] . ' ' . $f['original_name'] . ' ' . $f['file_type'] . ' ' . $target_text_search . ' ' . $f['uploader_name']);
+                $extLower = strtolower($f['file_type']);
+                $category = in_array($extLower, ['mp3', 'ogg', 'wav', 'm4a']) ? 'audio' : (in_array($extLower, ['mp4', 'webm']) ? 'video' : ($extLower === 'pdf' ? 'pdf' : (in_array($extLower, ['jpg', 'jpeg', 'png', 'bmp']) ? 'image' : 'other')));
             ?>
-                <div class="file-item-card bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700/60 transition-all hover:shadow-md"
-                             <!-- Topo do Card: Ícone + Título Clicável (Abre/Baixa/Play) -->
+                <div class="file-item-card bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700/60 transition-all hover:shadow-md" data-search="<?= htmlspecialchars($searchContent) ?>" data-category="<?= $category ?>" data-type="<?= $extLower ?>">
+                    <!-- Topo do Card: Ícone + Título Clicável (Abre/Baixa/Play) -->
                     <div class="flex items-start gap-3">
                         <?php if ($meta['is_media']): ?>
                             <button type="button"
@@ -605,8 +633,10 @@ require_once __DIR__ . '/layout_header.php';
                             }
                             
                             $searchContent = mb_strtolower($f['title'] . ' ' . $f['original_name'] . ' ' . $f['file_type'] . ' ' . $target_text_search . ' ' . $f['uploader_name']);
+                            $extLower = strtolower($f['file_type']);
+                            $category = in_array($extLower, ['mp3', 'ogg', 'wav', 'm4a']) ? 'audio' : (in_array($extLower, ['mp4', 'webm']) ? 'video' : ($extLower === 'pdf' ? 'pdf' : (in_array($extLower, ['jpg', 'jpeg', 'png', 'bmp']) ? 'image' : 'other')));
                         ?>
-                            <tr class="file-item-row hover:bg-slate-50 dark:hover:bg-slate-800/50" data-search="<?= htmlspecialchars($searchContent) ?>">
+                            <tr class="file-item-row hover:bg-slate-50 dark:hover:bg-slate-800/50" data-search="<?= htmlspecialchars($searchContent) ?>" data-category="<?= $category ?>" data-type="<?= $extLower ?>">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
                                     <div class="flex items-center gap-3">
                                         <?php if ($meta['is_media']): ?>
@@ -964,14 +994,33 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
+    let activeFileCategory = 'all';
+
+    function setFileTypeFilter(category) {
+        activeFileCategory = category;
+        
+        // Atualizar estado visual dos botões
+        const filterBtns = document.querySelectorAll('.file-filter-btn');
+        filterBtns.forEach(btn => {
+            const btnType = btn.getAttribute('data-filter-type');
+            if (btnType === category) {
+                btn.className = 'file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-coral-500 text-white shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer';
+            } else {
+                btn.className = 'file-filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer';
+            }
+        });
+        
+        filterFilesList();
+    }
+
     function filterFilesList() {
         const input = document.getElementById('file_search_input');
         const clearBtn = document.getElementById('file_search_clear');
         const emptyState = document.getElementById('files_search_empty');
         const countNum = document.getElementById('file_count_num');
         
-        if (!input) return;
-        const query = input.value.trim().toLowerCase();
+        const rawQuery = input ? input.value : '';
+        const query = rawQuery.trim().toLowerCase();
         
         if (clearBtn) {
             if (query.length > 0) {
@@ -983,11 +1032,18 @@ document.addEventListener('keydown', function(e) {
         
         let visibleCount = 0;
         
+        const matchesItem = (searchAttr, categoryAttr) => {
+            const textMatches = !query || searchAttr.includes(query);
+            const categoryMatches = (activeFileCategory === 'all') || (categoryAttr === activeFileCategory);
+            return textMatches && categoryMatches;
+        };
+
         // Filtrar cards mobile
         const cards = document.querySelectorAll('.file-item-card');
         cards.forEach(card => {
-            const text = card.getAttribute('data-search') || '';
-            if (!query || text.includes(query)) {
+            const text = (card.getAttribute('data-search') || '').toLowerCase();
+            const category = card.getAttribute('data-category') || '';
+            if (matchesItem(text, category)) {
                 card.style.display = '';
                 visibleCount++;
             } else {
@@ -998,13 +1054,22 @@ document.addEventListener('keydown', function(e) {
         // Filtrar linhas desktop
         const rows = document.querySelectorAll('.file-item-row');
         rows.forEach(row => {
-            const text = row.getAttribute('data-search') || '';
-            if (!query || text.includes(query)) {
+            const text = (row.getAttribute('data-search') || '').toLowerCase();
+            const category = row.getAttribute('data-category') || '';
+            if (matchesItem(text, category)) {
                 row.style.display = '';
             } else {
                 row.style.display = 'none';
             }
         });
+        
+        // Se estiver em desktop (onde cada linha corresponde a 1 arquivo e não aos cards)
+        // se visibleCount for 0 mas tiver rows filtradas, calcula pelas rows
+        if (window.innerWidth >= 768 && rows.length > 0) {
+            let rowCount = 0;
+            rows.forEach(r => { if (r.style.display !== 'none') rowCount++; });
+            visibleCount = rowCount;
+        }
         
         if (countNum) {
             countNum.textContent = visibleCount;
