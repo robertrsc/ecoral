@@ -656,62 +656,107 @@ require_once __DIR__ . '/layout_header.php';
                         </div>
                     </div>
 
-                    <!-- Minhas Cobranças em Aberto -->
-                    <div class="space-y-3">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                                <span>👤</span> Suas Cobranças em Aberto
-                            </h3>
-                            <span class="text-[11px] text-slate-400"><?= count($myOpenBillings) ?> disponível(is)</span>
-                        </div>
-
-                        <?php if (empty($myOpenBillings)): ?>
-                            <div class="p-4 rounded-xl border border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900/20 text-center text-xs text-slate-400">
-                                Você não possui cobranças em aberto no momento. O valor do comprovante será lançado como saldo na sua conta.
-                            </div>
-                        <?php else: ?>
-                            <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                                <?php foreach ($myOpenBillings as $mob): 
-                                    $isPreselected = ($preselectBillingId > 0 && $mob['id'] == $preselectBillingId);
-                                ?>
-                                    <label class="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-coral-300 dark:hover:border-coral-600 bg-white dark:bg-slate-900/40 cursor-pointer transition-all hover:shadow-sm">
-                                        <div class="flex items-center gap-3 min-w-0">
-                                            <input type="checkbox" name="selected_billings[]" value="<?= $mob['id'] ?>"
-                                                   data-amount="<?= $mob['remaining_amount'] ?>"
-                                                   data-title="<?= htmlspecialchars($mob['title']) ?>"
-                                                   data-owner="<?= htmlspecialchars($user['name']) ?> (Você)"
-                                                   <?= $isPreselected ? 'checked' : '' ?>
-                                                   class="w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 wizard-billing-checkbox"
-                                                   onchange="recalculateWizardConsumption()">
-                                            <div class="min-w-0">
-                                                <div class="text-xs font-bold text-slate-800 dark:text-white truncate">
-                                                    <?= htmlspecialchars($mob['title']) ?>
-                                                </div>
-                                                <div class="text-[10px] text-slate-400">
-                                                    Vencimento: <?= $mob['formatted_due_date'] ?>
-                                                </div>
-                                            </div>
+                    <!-- Cards Collapsáveis de Cobranças -->
+                    <div class="space-y-4">
+                        <!-- Card Collapsável: Minhas Cobranças em Aberto -->
+                        <div class="border border-slate-200 dark:border-slate-700/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900/40 shadow-sm transition-all">
+                            <button type="button" onclick="toggleBillingAccordion('own-billings-collapse', 'own-billings-chevron')"
+                                    class="w-full p-4 flex items-center justify-between text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/50 dark:hover:bg-slate-800/80 transition-colors cursor-pointer select-none">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-xl bg-coral-50 dark:bg-coral-950/40 text-coral-600 dark:text-coral-400 flex items-center justify-center text-sm font-bold shrink-0">
+                                        👤
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                            <span>Suas Cobranças em Aberto</span>
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-coral-100 text-coral-700 dark:bg-coral-950/60 dark:text-coral-300">
+                                                <?= count($myOpenBillings) ?>
+                                            </span>
                                         </div>
-                                        <span class="text-xs font-bold text-slate-900 dark:text-white shrink-0 ml-3">
-                                            <?= $mob['formatted_amount'] ?>
-                                        </span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                                        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                            <?= htmlspecialchars($user['name']) ?> (Você)
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">Exibir / Ocultar</span>
+                                    <svg id="own-billings-chevron" class="w-4 h-4 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </div>
+                            </button>
 
-                    <!-- Cobranças do Coralista Compartilhado (se houver) -->
-                    <div id="shared-member-billings-container" class="hidden space-y-3 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                                <span>👥</span> Cobranças do Coralista: <span id="shared-member-title-name" class="text-coral-600 dark:text-coral-400 normal-case font-bold"></span>
-                            </h3>
-                            <span id="shared-member-billings-count" class="text-[11px] text-slate-400"></span>
+                            <div id="own-billings-collapse" class="p-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 space-y-2">
+                                <?php if (empty($myOpenBillings)): ?>
+                                    <div class="p-4 rounded-xl border border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900/20 text-center text-xs text-slate-400">
+                                        Você não possui cobranças em aberto no momento. O valor do comprovante será lançado como saldo na sua conta.
+                                    </div>
+                                <?php else: ?>
+                                    <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                        <?php foreach ($myOpenBillings as $mob): 
+                                            $isPreselected = ($preselectBillingId > 0 && $mob['id'] == $preselectBillingId);
+                                        ?>
+                                            <label class="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-coral-300 dark:hover:border-coral-600 bg-slate-50/50 dark:bg-slate-900/30 cursor-pointer transition-all hover:shadow-xs">
+                                                <div class="flex items-center gap-3 min-w-0">
+                                                    <input type="checkbox" name="selected_billings[]" value="<?= $mob['id'] ?>"
+                                                           data-amount="<?= $mob['remaining_amount'] ?>"
+                                                           data-title="<?= htmlspecialchars($mob['title']) ?>"
+                                                           data-owner="<?= htmlspecialchars($user['name']) ?> (Você)"
+                                                           <?= $isPreselected ? 'checked' : '' ?>
+                                                           class="w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 wizard-billing-checkbox"
+                                                           onchange="recalculateWizardConsumption()">
+                                                    <div class="min-w-0">
+                                                        <div class="text-xs font-bold text-slate-800 dark:text-white truncate">
+                                                            <?= htmlspecialchars($mob['title']) ?>
+                                                        </div>
+                                                        <div class="text-[10px] text-slate-400">
+                                                            Vencimento: <?= $mob['formatted_due_date'] ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <span class="text-xs font-bold text-slate-900 dark:text-white shrink-0 ml-3">
+                                                    <?= $mob['formatted_amount'] ?>
+                                                </span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
 
-                        <div id="shared-member-billings-list" class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            <!-- Inserido dinamicamente via JS -->
+                        <!-- Card Collapsável: Cobranças do Coralista Compartilhado (se houver) -->
+                        <div id="shared-member-billings-container" class="hidden border border-slate-200 dark:border-slate-700/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900/40 shadow-sm transition-all">
+                            <button type="button" onclick="toggleBillingAccordion('shared-billings-collapse', 'shared-billings-chevron')"
+                                    class="w-full p-4 flex items-center justify-between text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/50 dark:hover:bg-slate-800/80 transition-colors cursor-pointer select-none">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center text-sm font-bold shrink-0">
+                                        👥
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                            <span>Cobranças de: <span id="shared-member-title-name" class="text-purple-600 dark:text-purple-400 font-bold normal-case"></span></span>
+                                            <span id="shared-member-billings-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                                                0
+                                            </span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                            Pagamento compartilhado
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">Exibir / Ocultar</span>
+                                    <svg id="shared-billings-chevron" class="w-4 h-4 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </div>
+                            </button>
+
+                            <div id="shared-billings-collapse" class="p-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 space-y-2">
+                                <div id="shared-member-billings-list" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -894,7 +939,8 @@ function handleSharedToggle(checkbox) {
 function handleAmountInput() {
     const errorAmount = document.getElementById('error-amount');
     if (errorAmount) errorAmount.classList.add('hidden');
-    recalculateWizardConsumption();
+    // Pequeno timeout caso a máscara monetária ainda esteja atualizando o hidden no mesmo tick
+    setTimeout(recalculateWizardConsumption, 10);
 }
 
 // Busca AJAX do outro coralista
@@ -970,14 +1016,20 @@ function renderSharedMemberResult(data) {
 function populateSharedMemberBillings(data) {
     const container = document.getElementById('shared-member-billings-container');
     const titleName = document.getElementById('shared-member-title-name');
-    const countEl = document.getElementById('shared-member-billings-count');
+    const badgeEl = document.getElementById('shared-member-billings-badge');
     const listEl = document.getElementById('shared-member-billings-list');
     
     if (!container || !listEl) return;
     
     container.classList.remove('hidden');
     if (titleName) titleName.textContent = data.member_name;
-    if (countEl) countEl.textContent = data.billings.length + ' disponível(is)';
+    if (badgeEl) badgeEl.textContent = data.billings.length;
+    
+    // Garantir que o accordion do membro compartilhado esteja aberto ao carregar
+    const collapseEl = document.getElementById('shared-billings-collapse');
+    const chevronEl = document.getElementById('shared-billings-chevron');
+    if (collapseEl) collapseEl.classList.remove('hidden');
+    if (chevronEl) chevronEl.classList.add('rotate-180');
     
     if (data.billings.length === 0) {
         listEl.innerHTML = '<div class="p-3 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-900/30 rounded-xl">Nenhuma cobrança em aberto deste coralista.</div>';
@@ -987,13 +1039,13 @@ function populateSharedMemberBillings(data) {
     let html = '';
     data.billings.forEach(b => {
         html += `
-            <label class="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-coral-300 dark:hover:border-coral-600 bg-white dark:bg-slate-900/40 cursor-pointer transition-all hover:shadow-sm">
+            <label class="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-purple-300 dark:hover:border-purple-600 bg-slate-50/50 dark:bg-slate-900/30 cursor-pointer transition-all hover:shadow-xs">
                 <div class="flex items-center gap-3 min-w-0">
                     <input type="checkbox" name="selected_billings[]" value="${b.id}"
                            data-amount="${b.remaining_amount}"
                            data-title="${escapeHtml(b.title)}"
                            data-owner="${escapeHtml(data.member_name)}"
-                           class="w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 wizard-billing-checkbox"
+                           class="w-4 h-4 rounded text-purple-600 border-slate-300 focus:ring-purple-500 dark:bg-slate-900 dark:border-slate-700 wizard-billing-checkbox"
                            onchange="recalculateWizardConsumption()">
                     <div class="min-w-0">
                         <div class="text-xs font-bold text-slate-800 dark:text-white truncate">
@@ -1011,6 +1063,21 @@ function populateSharedMemberBillings(data) {
         `;
     });
     listEl.innerHTML = html;
+}
+
+function toggleBillingAccordion(collapseId, chevronId) {
+    const collapse = document.getElementById(collapseId);
+    const chevron = document.getElementById(chevronId);
+    if (!collapse) return;
+    
+    const isHidden = collapse.classList.contains('hidden');
+    if (isHidden) {
+        collapse.classList.remove('hidden');
+        if (chevron) chevron.classList.add('rotate-180');
+    } else {
+        collapse.classList.add('hidden');
+        if (chevron) chevron.classList.remove('rotate-180');
+    }
 }
 
 function clearSharedMemberData() {

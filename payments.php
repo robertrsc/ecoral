@@ -637,38 +637,78 @@ if ($user['role'] === 'membro') {
             $mpb['title'] .= ' - ' . date('m/Y', strtotime($mpb['due_date']));
         }
     }
-    unset($mpb);
 } else {
-    // Admins e Colaborador: Visualizar comprovantes enviados
+    // Admins, Financeiro e Colaborador: Visualizar comprovantes enviados com filtro
+    $receiptStatusFilter = trim($_GET['receipt_status'] ?? 'all');
+    if (!in_array($receiptStatusFilter, ['all', 'pending', 'approved', 'rejected'])) {
+        $receiptStatusFilter = 'all';
+    }
+
     try {
+        $statusCondition = "";
+        if ($receiptStatusFilter === 'pending') {
+            $statusCondition = " AND r.status = 'pending'";
+        } elseif ($receiptStatusFilter === 'approved') {
+            $statusCondition = " AND r.status = 'approved'";
+        } elseif ($receiptStatusFilter === 'rejected') {
+            $statusCondition = " AND r.status = 'rejected'";
+        }
+
         if (is_superadmin()) {
-            $stmtRecs = $pdo->query("SELECT r.*, u.name as member_name, u.email as member_email, c.name as choir_name,
-                                     (SELECT GROUP_CONCAT(CONCAT(IF(bi.type = 'recurring', CONCAT(bi.title, ' - ', DATE_FORMAT(mb.due_date, '%m/%Y')), bi.title), ' (', u2.name, ')') SEPARATOR ', ') 
-                                      FROM receipt_billing_items rbi 
-                                      JOIN member_billing mb ON rbi.member_billing_id = mb.id 
-                                      JOIN billing_items bi ON mb.billing_item_id = bi.id 
-                                      JOIN users u2 ON mb.member_id = u2.id
-                                      WHERE rbi.receipt_id = r.id) as linked_items 
-                                     FROM receipts r 
-                                     JOIN users u ON r.member_id = u.id 
-                                     LEFT JOIN choirs c ON u.choir_id = c.id 
-                                     ORDER BY r.status DESC, r.id DESC");
+            $sql = "SELECT r.*, u.name as member_name, u.email as member_email, c.name as choir_name,
+                           (SELECT GROUP_CONCAT(CONCAT(IF(bi.type = 'recurring', CONCAT(bi.title, ' - ', DATE_FORMAT(mb.due_date, '%m/%Y')), bi.title), ' (', u2.name, ')') SEPARATOR ', ') 
+                            FROM receipt_billing_items rbi 
+                            JOIN member_billing mb ON rbi.member_billing_id = mb.id 
+                            JOIN billing_items bi ON mb.billing_item_id = bi.id 
+                            JOIN users u2 ON mb.member_id = u2.id
+                            WHERE rbi.receipt_id = r.id) as linked_items 
+                    FROM receipts r 
+                    JOIN users u ON r.member_id = u.id 
+                    LEFT JOIN choirs c ON u.choir_id = c.id 
+                    WHERE 1=1 {$statusCondition}
+                    ORDER BY r.status DESC, r.id DESC";
+            $stmtRecs = $pdo->query($sql);
         } else {
-            $stmtRecs = $pdo->prepare("SELECT r.*, u.name as member_name, u.email as member_email, c.name as choir_name,
-                                     (SELECT GROUP_CONCAT(CONCAT(IF(bi.type = 'recurring', CONCAT(bi.title, ' - ', DATE_FORMAT(mb.due_date, '%m/%Y')), bi.title), ' (', u2.name, ')') SEPARATOR ', ') 
-                                      FROM receipt_billing_items rbi 
-                                      JOIN member_billing mb ON rbi.member_billing_id = mb.id 
-                                      JOIN billing_items bi ON mb.billing_item_id = bi.id 
-                                      JOIN users u2 ON mb.member_id = u2.id
-                                      WHERE rbi.receipt_id = r.id) as linked_items 
-                                     FROM receipts r 
-                                     JOIN users u ON r.member_id = u.id 
-                                     LEFT JOIN choirs c ON u.choir_id = c.id 
-                                     WHERE u.choir_id = ? 
-                                     ORDER BY r.status DESC, r.id DESC");
+            $sql = "SELECT r.*, u.name as member_name, u.email as member_email, c.name as choir_name,
+                           (SELECT GROUP_CONCAT(CONCAT(IF(bi.type = 'recurring', CONCAT(bi.title, ' - ', DATE_FORMAT(mb.due_date, '%m/%Y')), bi.title), ' (', u2.name, ')') SEPARATOR ', ') 
+                            FROM receipt_billing_items rbi 
+                            JOIN member_billing mb ON rbi.member_billing_id = mb.id 
+                            JOIN billing_items bi ON mb.billing_item_id = bi.id 
+                            JOIN users u2 ON mb.member_id = u2.id
+                            WHERE rbi.receipt_id = r.id) as linked_items 
+                    FROM receipts r 
+                    JOIN users u ON r.member_id = u.id 
+                    LEFT JOIN choirs c ON u.choir_id = c.id 
+                    WHERE u.choir_id = ? {$statusCondition}
+                    ORDER BY r.status DESC, r.id DESC";
+            $stmtRecs = $pdo->prepare($sql);
             $stmtRecs->execute([$user['choir_id']]);
         }
         $receiptsList = $stmtRecs->fetchAll();
+
+        // Contagens por status para os filtros rápidos
+        $countQuery = is_superadmin() 
+            ? "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as total_pending,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as total_approved,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as total_rejected
+               FROM receipts"
+            : "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) as total_pending,
+                SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) as total_approved,
+                SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) as total_rejected
+               FROM receipts r
+               JOIN users u ON r.member_id = u.id
+               WHERE u.choir_id = ?";
+        $stmtCounts = $pdo->prepare($countQuery);
+        if (is_superadmin()) {
+            $stmtCounts->execute();
+        } else {
+            $stmtCounts->execute([$user['choir_id']]);
+        }
+        $receiptCounts = $stmtCounts->fetch() ?: ['total' => 0, 'total_pending' => 0, 'total_approved' => 0, 'total_rejected' => 0];
     } catch (PDOException $e) {
         $error = 'Erro ao carregar comprovantes: ' . $e->getMessage();
         $receiptsList = [];
@@ -685,7 +725,7 @@ require_once __DIR__ . '/layout_header.php';
 
 <div class="mb-6">
     <h1 class="text-2xl font-bold font-outfit text-slate-900 dark:text-white flex items-center gap-2">
-        <span>🧾</span> Fluxo de Pagamentos e Comprovantes
+        <span>🧾</span> Pagamentos & Comprovantes
     </h1>
     <p class="text-xs text-slate-500 dark:text-slate-400">
         <?php if ($user['role'] === 'membro'): ?>
@@ -702,58 +742,7 @@ require_once __DIR__ . '/layout_header.php';
     </div>
 <?php endif; ?>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-    <!-- ==============================================
-         1. PAINEL DO CANTOR (MEMBRO) - CARD DO NOVO WIZARD DE ENVIO
-         ============================================== -->
-    <?php if ($user['role'] === 'membro'): ?>
-        <div id="card-enviar-comprovante" class="lg:col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700/50 h-fit transition-all duration-200">
-            <div class="flex items-center gap-3 mb-3">
-                <span class="w-10 h-10 rounded-2xl bg-coral-50 dark:bg-coral-950/40 text-coral-600 dark:text-coral-400 flex items-center justify-center text-xl shrink-0">
-                    📤
-                </span>
-                <div>
-                    <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white leading-tight">Enviar Comprovante</h2>
-                    <p class="text-[11px] text-slate-400 leading-tight mt-0.5">Novo Wizard passo a passo</p>
-                </div>
-            </div>
-            
-            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4">
-                Anexe seu comprovante de Pix ou transferência, divida ou compartilhe com outro coralista e selecione as cobranças em aberto de forma simples e intuitiva.
-            </p>
-
-            <div class="space-y-2 mb-4 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400">
-                <div class="flex items-center gap-2">
-                    <span class="w-4 h-4 rounded-full bg-coral-100 text-coral-600 dark:bg-coral-950 dark:text-coral-400 font-bold flex items-center justify-center text-[9px]">1</span>
-                    <span>Anexe o arquivo e declare o valor</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-bold flex items-center justify-center text-[9px]">2</span>
-                    <span>Pagamento individual ou compartilhado</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-bold flex items-center justify-center text-[9px]">3</span>
-                    <span>Selecione cobranças com consumo em tempo real</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-bold flex items-center justify-center text-[9px]">4</span>
-                    <span>Resumo, observações e finalização</span>
-                </div>
-            </div>
-
-            <a href="submit-receipt.php" 
-               class="w-full py-3 px-4 bg-gradient-to-r from-coral-500 to-rose-600 hover:from-coral-600 hover:to-rose-700 text-white font-bold rounded-xl shadow-md shadow-coral-500/20 focus:outline-none focus:ring-2 focus:ring-coral-400 transition-all text-xs flex items-center justify-center gap-2 group hover:scale-[1.01]">
-                <span>Abrir Envio de Comprovante</span>
-                <svg class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-            </a>
-        </div>
-    <?php endif; ?>
-
-    <!-- ==============================================
-         LISTA DE COMPROVANTES (ADMINS OU HISTÓRICO MEMBRO) E HISTÓRICO DE PAGAMENTOS REALIZADOS
-         ============================================== -->
-    <div class="<?= $user['role'] === 'membro' ? 'lg:col-span-2' : 'lg:col-span-3' ?> space-y-6">
+<div class="space-y-6">
 
         <?php if ($user['role'] === 'membro'): ?>
             <!-- ==============================================
@@ -930,9 +919,45 @@ require_once __DIR__ . '/layout_header.php';
         <?php endif; ?>
 
         <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700/50">
-            <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white mb-4">
-                <?= $user['role'] === 'membro' ? 'Meu Histórico de Comprovantes' : 'Todos os Comprovantes Recebidos' ?>
-            </h2>
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-slate-700/50">
+                <div>
+                    <h2 class="text-base font-bold font-outfit text-slate-800 dark:text-white">
+                        <?= $user['role'] === 'membro' ? 'Meu Histórico de Comprovantes' : 'Todos os Comprovantes Recebidos' ?>
+                    </h2>
+                    <p class="text-xs text-slate-400">
+                        <?= $user['role'] === 'membro' ? 'Acompanhe o status de validação dos seus envios.' : 'Filtre e gerencie os comprovantes anexados pelos coralistas.' ?>
+                    </p>
+                </div>
+
+                <?php if ($user['role'] !== 'membro'): ?>
+                    <!-- Filtros Rápidos por Status (Pendentes / Confirmados / Todos) -->
+                    <div class="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/60 rounded-xl self-start md:self-auto overflow-x-auto max-w-full">
+                        <a href="payments.php?receipt_status=all"
+                           class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 <?= $receiptStatusFilter === 'all' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white' ?>">
+                            <span>Todos</span>
+                            <span class="px-1.5 py-0.2 rounded-full text-[10px] <?= $receiptStatusFilter === 'all' ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300' : 'bg-slate-200/60 dark:bg-slate-800 text-slate-500' ?>">
+                                <?= intval($receiptCounts['total'] ?? 0) ?>
+                            </span>
+                        </a>
+
+                        <a href="payments.php?receipt_status=pending"
+                           class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 <?= $receiptStatusFilter === 'pending' ? 'bg-amber-500 text-white shadow-xs' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30' ?>">
+                            <span>⏳ Pendentes</span>
+                            <span class="px-1.5 py-0.2 rounded-full text-[10px] <?= $receiptStatusFilter === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' ?>">
+                                <?= intval($receiptCounts['total_pending'] ?? 0) ?>
+                            </span>
+                        </a>
+
+                        <a href="payments.php?receipt_status=approved"
+                           class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 <?= $receiptStatusFilter === 'approved' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30' ?>">
+                            <span>✅ Confirmados</span>
+                            <span class="px-1.5 py-0.2 rounded-full text-[10px] <?= $receiptStatusFilter === 'approved' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' ?>">
+                                <?= intval($receiptCounts['total_approved'] ?? 0) ?>
+                            </span>
+                        </a>
+                    </div>
+                <?php endif; ?>
+            </div>
             
             <?php if (empty($receiptsList)): ?>
                 <div class="text-center py-12 text-slate-400">Nenhum comprovante para exibir.</div>
@@ -1058,7 +1083,6 @@ require_once __DIR__ . '/layout_header.php';
             </div>
         <?php endif; ?>
     </div>
-</div>
 
 <?php if ($user['role'] === 'membro' && $memberBalance > 0 && !empty($selectableBillings)): ?>
     <!-- Modal para Pagar usando Saldo -->
