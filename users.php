@@ -22,6 +22,31 @@ if (is_superadmin()) {
     $choirs = $pdo->query("SELECT id, name FROM choirs ORDER BY name ASC")->fetchAll();
 }
 
+// Carregar cantores do coral para opção de promoção direta na equipe administrativa
+$promotable_members = [];
+if ($action === 'new') {
+    try {
+        if (is_superadmin()) {
+            $stmtM = $pdo->query("SELECT u.id, u.name, u.email, u.username, u.choir_id, u.cpf, u.rg, u.address, u.address_number, u.address_neighborhood, u.address_zip_code, u.address_city, u.address_state, c.name as choir_name 
+                                  FROM users u 
+                                  LEFT JOIN choirs c ON u.choir_id = c.id 
+                                  WHERE u.role = 'membro' AND u.status = 'active' 
+                                  ORDER BY u.name ASC");
+            $promotable_members = $stmtM->fetchAll();
+        } else {
+            $stmtM = $pdo->prepare("SELECT u.id, u.name, u.email, u.username, u.choir_id, u.cpf, u.rg, u.address, u.address_number, u.address_neighborhood, u.address_zip_code, u.address_city, u.address_state, c.name as choir_name 
+                                    FROM users u 
+                                    LEFT JOIN choirs c ON u.choir_id = c.id 
+                                    WHERE u.choir_id = ? AND u.role = 'membro' AND u.status = 'active' 
+                                    ORDER BY u.name ASC");
+            $stmtM->execute([$loggedUser['choir_id']]);
+            $promotable_members = $stmtM->fetchAll();
+        }
+    } catch (PDOException $e) {
+        // Silêncio caso tabela não esteja acessível
+    }
+}
+
 // Inserir / Editar
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
@@ -61,6 +86,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $choir_id = $loggedUser['choir_id'];
     }
     
+    $promote_member_id = intval($_POST['promote_member_id'] ?? 0);
+    
+    // Suporte para promover membro existente
+    if ($action === 'new' && $promote_member_id > 0) {
+        $edit_id = $promote_member_id;
+    }
+    
     // Validações
     if (empty($name) || empty($email) || empty($username) || empty($role)) {
         $error = 'Por favor, preencha todos os campos obrigatórios (*).';
@@ -77,7 +109,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 if ($action === 'new') {
-                    if (empty($password)) {
+                    if ($promote_member_id > 0) {
+                        // Promovendo um membro cantor existente
+                        if (!is_superadmin()) {
+                            $stmtCheck = $pdo->prepare("SELECT choir_id FROM users WHERE id = ?");
+                            $stmtCheck->execute([$promote_member_id]);
+                            if ($stmtCheck->fetchColumn() != $loggedUser['choir_id']) {
+                                set_flash_message('error', 'Acesso negado.');
+                                header("Location: users.php");
+                                exit;
+                            }
+                        }
+                        if (!empty($password)) {
+                            $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+                            $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, password = ?, role = ?, permissions = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                            $stmt->execute([$choir_id, $name, $email, $username, $hashedPassword, $role, $permissions_json, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $promote_member_id]);
+                        } else {
+                            $stmt = $pdo->prepare("UPDATE users SET choir_id = ?, name = ?, email = ?, username = ?, role = ?, permissions = ?, cpf = ?, rg = ?, address = ?, address_number = ?, address_neighborhood = ?, address_zip_code = ?, address_city = ?, address_state = ? WHERE id = ?");
+                            $stmt->execute([$choir_id, $name, $email, $username, $role, $permissions_json, $cpf, $rg, $address, $address_number, $address_neighborhood, $address_zip_code, $address_city, $address_state, $promote_member_id]);
+                        }
+                        set_flash_message('success', "Membro '$name' promovido para {$role} com sucesso!");
+                        header("Location: users.php");
+                        exit;
+                    } elseif (empty($password)) {
                         $error = 'A senha é obrigatória para novos usuários.';
                     } else {
                         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
@@ -248,6 +302,39 @@ require_once __DIR__ . '/layout_header.php';
         </h2>
         
         <form action="users.php?action=<?= $action ?><?= $action === 'edit' ? '&id=' . $edit_id : '' ?>" method="POST" class="space-y-4">
+            
+            <?php if ($action === 'new' && !empty($promotable_members)): ?>
+                <!-- Seleção para Promover Membro Cantor Existente -->
+                <div class="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800/40 rounded-xl mb-4">
+                    <label for="promote_member_id" class="block text-xs font-bold text-indigo-900 dark:text-indigo-300 mb-1 flex items-center gap-1.5">
+                        <span>⭐</span> Promover Cantor Existente do Coral (Opcional)
+                    </label>
+                    <p class="text-[11px] text-indigo-700 dark:text-indigo-400 mb-2">
+                        Selecione um cantor ativo para conceder privilégios de Administrador ou Financeiro mantendo todo o seu histórico no coral.
+                    </p>
+                    <select name="promote_member_id" id="promote_member_id" onchange="fillMemberData(this)"
+                            class="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all">
+                        <option value="0">-- Criar um novo usuário do zero --</option>
+                        <?php foreach ($promotable_members as $pm): ?>
+                            <option value="<?= $pm['id'] ?>"
+                                    data-name="<?= htmlspecialchars($pm['name']) ?>"
+                                    data-email="<?= htmlspecialchars($pm['email']) ?>"
+                                    data-username="<?= htmlspecialchars($pm['username']) ?>"
+                                    data-choir="<?= $pm['choir_id'] ?>"
+                                    data-cpf="<?= htmlspecialchars($pm['cpf'] ?? '') ?>"
+                                    data-rg="<?= htmlspecialchars($pm['rg'] ?? '') ?>"
+                                    data-address="<?= htmlspecialchars($pm['address'] ?? '') ?>"
+                                    data-number="<?= htmlspecialchars($pm['address_number'] ?? '') ?>"
+                                    data-neighborhood="<?= htmlspecialchars($pm['address_neighborhood'] ?? '') ?>"
+                                    data-zip="<?= htmlspecialchars($pm['address_zip_code'] ?? '') ?>"
+                                    data-city="<?= htmlspecialchars($pm['address_city'] ?? '') ?>"
+                                    data-state="<?= htmlspecialchars($pm['address_state'] ?? '') ?>">
+                                <?= htmlspecialchars($pm['name']) ?> (@<?= htmlspecialchars($pm['username']) ?>) - <?= htmlspecialchars($pm['choir_name'] ?? 'Coral') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php endif; ?>
             
             <?php if (is_superadmin()): ?>
                 <div>
@@ -541,6 +628,46 @@ require_once __DIR__ . '/layout_header.php';
 <?php endif; ?>
 
 <script>
+function fillMemberData(select) {
+    const selectedOption = select.options[select.selectedIndex];
+    if (!selectedOption || select.value === '0') {
+        return;
+    }
+    
+    const name = selectedOption.getAttribute('data-name') || '';
+    const email = selectedOption.getAttribute('data-email') || '';
+    const username = selectedOption.getAttribute('data-username') || '';
+    const choirId = selectedOption.getAttribute('data-choir') || '';
+    const cpf = selectedOption.getAttribute('data-cpf') || '';
+    const rg = selectedOption.getAttribute('data-rg') || '';
+    const address = selectedOption.getAttribute('data-address') || '';
+    const number = selectedOption.getAttribute('data-number') || '';
+    const neighborhood = selectedOption.getAttribute('data-neighborhood') || '';
+    const zip = selectedOption.getAttribute('data-zip') || '';
+    const city = selectedOption.getAttribute('data-city') || '';
+    const state = selectedOption.getAttribute('data-state') || '';
+
+    if (document.getElementById('name')) document.getElementById('name').value = name;
+    if (document.getElementById('email')) document.getElementById('email').value = email;
+    if (document.getElementById('username')) document.getElementById('username').value = username;
+    if (document.getElementById('choir_id') && choirId) document.getElementById('choir_id').value = choirId;
+    if (document.getElementById('cpf')) document.getElementById('cpf').value = cpf;
+    if (document.getElementById('rg')) document.getElementById('rg').value = rg;
+    if (document.getElementById('address')) document.getElementById('address').value = address;
+    if (document.getElementById('address_number')) document.getElementById('address_number').value = number;
+    if (document.getElementById('address_neighborhood')) document.getElementById('address_neighborhood').value = neighborhood;
+    if (document.getElementById('address_zip_code')) document.getElementById('address_zip_code').value = zip;
+    if (document.getElementById('address_city')) document.getElementById('address_city').value = city;
+    if (document.getElementById('address_state')) document.getElementById('address_state').value = state;
+
+    // Se a senha for opcional na promoção, remover o atributo required
+    const passInput = document.getElementById('password');
+    if (passInput) {
+        passInput.removeAttribute('required');
+        passInput.placeholder = "Deixe em branco para manter a senha atual do membro";
+    }
+}
+
 function applyDefaultRolePermissions(role) {
     const permSchedule = document.getElementById('perm_manage_schedule');
     const permFiles = document.getElementById('perm_manage_files');

@@ -599,10 +599,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!is_array($posted_permissions)) {
         $posted_permissions = [];
     }
-    // Para cantores, apenas permissões operacionais podem ser delegadas (NUNCA financeiro)
+    // Permissões operacionais podem ser delegadas ao cantor
     $allowed_singer_perms = ['manage_schedule', 'manage_files'];
     if (is_superadmin() || $loggedUser['role'] === 'administrador') {
         $allowed_singer_perms[] = 'manage_users';
+        $allowed_singer_perms[] = 'manage_financial'; // Permite conceder privilégio financeiro ao membro do coral
     }
     $sanitized_permissions = array_values(array_intersect($posted_permissions, $allowed_singer_perms));
     $permissions_json = !empty($sanitized_permissions) ? json_encode($sanitized_permissions) : null;
@@ -1182,10 +1183,36 @@ require_once __DIR__ . '/layout_header.php';
                             <span class="block text-[11px] text-slate-400 mt-0.5">Subir partituras, áudios e guias de naipes para o coral.</span>
                         </div>
                     </label>
+
+                    <?php if (is_superadmin() || $loggedUser['role'] === 'administrador'): ?>
+                    <!-- Usuários / Membros -->
+                    <label class="flex items-start p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-coral-400 dark:hover:border-coral-500 bg-slate-50/50 dark:bg-slate-900/40 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_users"
+                               <?= in_array('manage_users', $active_singer_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>👥</span> Gestão de Cantores & Usuários
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Aprovar e cadastrar novos cantores deste coral.</span>
+                        </div>
+                    </label>
+
+                    <!-- Gestão Financeira -->
+                    <label class="flex items-start p-3 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/30 dark:bg-amber-950/10 hover:border-amber-400 cursor-pointer transition-colors">
+                        <input type="checkbox" name="permissions[]" value="manage_financial"
+                               <?= in_array('manage_financial', $active_singer_perms) ? 'checked' : '' ?>
+                               class="w-4 h-4 mt-0.5 rounded text-amber-600 border-slate-300 focus:ring-amber-500 dark:bg-slate-900 dark:border-slate-700">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <span>💰</span> Privilégio Financeiro do Coral
+                                <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-bold uppercase">Financeiro</span>
+                            </span>
+                            <span class="block text-[11px] text-slate-400 mt-0.5">Criar mensalidades, aprovar comprovantes e consultar caixa do coral.</span>
+                        </div>
+                    </label>
+                    <?php endif; ?>
                 </div>
-                <p class="text-[10px] text-slate-400 italic mt-2">
-                    🔒 A área financeira (cobranças, pagamentos e caixa) permanece protegida e nunca é delegada a cantores.
-                </p>
             </div>
             
             <div class="flex justify-end gap-2 pt-4">
@@ -1284,7 +1311,21 @@ require_once __DIR__ . '/layout_header.php';
                                         <input type="checkbox" name="member_ids[]" value="<?= $m['id'] ?>" onchange="updateBoardingBar()" class="member-select-cb w-4 h-4 rounded text-coral-500 border-slate-300 focus:ring-coral-500 dark:bg-slate-900 dark:border-slate-700 cursor-pointer">
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-white">
-                                        <div><?= htmlspecialchars($m['name']) ?></div>
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span><?= htmlspecialchars($m['name']) ?></span>
+                                            <?php 
+                                                $m_perms = user_permissions($m);
+                                                if (in_array('manage_financial', $m_perms)): 
+                                            ?>
+                                                <span class="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title="Possui Privilégio Financeiro no Coral">
+                                                    💰 Financeiro
+                                                </span>
+                                            <?php elseif (in_array('manage_users', $m_perms) || in_array('manage_schedule', $m_perms) || in_array('manage_files', $m_perms)): ?>
+                                                <span class="text-[9px] px-1.5 py-0.5 rounded font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300" title="Possui Funções Administrativas Delegadas">
+                                                    ⭐ Auxiliar
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
                                         <div class="text-[10px] text-slate-400 font-mono mt-1 flex items-center gap-1 select-none">
                                             <span>Código:</span>
                                             <?php if (!empty($m['member_code'])): ?>
